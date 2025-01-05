@@ -3,6 +3,8 @@
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 
+#include <stdbool.h>
+
 #define MAX_KILL_ENTRIES 4096
 #define MAX_FOLLOW_ENTRIES 1024
 
@@ -10,6 +12,8 @@ enum stat_type {
     GET_CUR_TASK_FAILED, /* when the bpf helper get_current_task fails */
     TP_ENTERED,  /* every time syscall is entered */
     IGNORE_PID,  /* dont filter, PID isn't being traced */
+    KILL_RINGBUF_RESERVE_FAILED,
+    PID_READ_FAILED,
     STAT_END,
 };
 
@@ -55,6 +59,19 @@ __always_inline void record_stat(enum stat_type stat) {
     __sync_fetch_and_add(s_count, 1);
 }
 
+__always_inline void kill(pid_t pid) {
+    pid_t *kill;
+    kill = bpf_ringbuf_reserve(&kill_map, sizeof(pid_t), 0);
+    if (!kill) {
+        record_stat(KILL_RINGBUF_RESERVE_FAILED);
+        return;
+    }
+
+    *kill = pid;
+
+    bpf_ringbuf_submit(kill, 0);
+}
+
 SEC("raw_tp/sys_enter")
 int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
     record_stat(TP_ENTERED);
@@ -68,13 +85,20 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
         return 1;
     }
 
-    bpf_probe_read(&pid, sizeof(pid), &task->tgid);
+    int res;
+    res = bpf_probe_read(&pid, sizeof(pid), &task->tgid);
+    if (res != 0) {
+        record_stat(PID_READ_FAILED);
+        return 1;
+    }
 
-    bool protect = bpf_map_lookup_elem(&protect_map, &pid);
+    bool *protect = (bool *)bpf_map_lookup_elem(&protect_map, &pid);
     if (!protect) {
         record_stat(IGNORE_PID);
         return 0;
     }
+
+   kill(pid); 
 
     return 0;
 }

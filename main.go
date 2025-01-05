@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"strconv"
-	"time"
 
 	"github.com/tcassar-diss/addrfilter/bpf"
 	"go.uber.org/zap"
@@ -22,7 +22,7 @@ func main() {
 	logger := l.Sugar()
 	defer l.Sync()
 
-	prog, err := bpf.LoadProgram(logger)
+	filter, err := bpf.LoadFilter(logger)
 	if err != nil {
 		logger.Fatalw("failed to load bpf program", "err", err)
 	}
@@ -34,30 +34,47 @@ func main() {
 		os.Exit(1)
 	}
 
-	p, err := strconv.ParseInt(os.Args[1], 10, 32)
+	i64pid, err := strconv.ParseInt(os.Args[1], 10, 32)
 	if err != nil {
 		fmt.Println("couldn't parse PID provided")
 		os.Exit(1)
 	}
 
-	pid := int32(p)
+	pid := int32(i64pid)
+
+	if err := filter.ProtectPID(pid); err != nil {
+		logger.Fatalw("failed to protect pid", "pid", pid, "err", err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+
+	// needs to be buffered s.th. select/case statements don't block
+	kills := make(chan int32, 16)
+	stopper := make(chan os.Signal)
+
+	signal.Notify(stopper, os.Interrupt)
+
+	go func() {
+		<-stopper
+		logger.Infow("received ctrl-c, exiting")
+		cancel()
+	}()
 
 	var eg errgroup.Group
 
 	eg.Go(func() error {
-		return prog.Filter(ctx, pid)
+		return filter.Start(ctx, kills)
 	})
 
-	time.Sleep(time.Second)
-	cancel()
+	eg.Go(func() error {
+		return Kill(ctx, logger, kills)
+	})
 
 	if err := eg.Wait(); err != nil {
 		logger.Fatalw("error occurred while filtering", "err", err)
 	}
 
-	stats, err := prog.ReadStatsMap()
+	stats, err := filter.ReadStatsMap()
 	if err != nil {
 		logger.Fatalw("couldn't read stats map", "err", err)
 	}
@@ -67,5 +84,7 @@ func main() {
 		"tp_entered", stats.TPEntered,
 		"get_current_task_failed", stats.GetCurrentTaskFailed,
 		"ignore_pid", stats.IgnorePID,
+		"read_pid_failed", stats.ReadPIDFailed,
+		"ringbuf_reserve_failed", stats.RingbufReserveFailed,
 	)
 }

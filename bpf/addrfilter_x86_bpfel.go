@@ -15,10 +15,12 @@ import (
 type addrfilterStatType uint32
 
 const (
-	addrfilterStatTypeGET_CUR_TASK_FAILED addrfilterStatType = 0
-	addrfilterStatTypeTP_ENTERED          addrfilterStatType = 1
-	addrfilterStatTypeIGNORE_PID          addrfilterStatType = 2
-	addrfilterStatTypeSTAT_END            addrfilterStatType = 3
+	addrfilterStatTypeGET_CUR_TASK_FAILED         addrfilterStatType = 0
+	addrfilterStatTypeTP_ENTERED                  addrfilterStatType = 1
+	addrfilterStatTypeIGNORE_PID                  addrfilterStatType = 2
+	addrfilterStatTypeKILL_RINGBUF_RESERVE_FAILED addrfilterStatType = 3
+	addrfilterStatTypePID_READ_FAILED             addrfilterStatType = 4
+	addrfilterStatTypeSTAT_END                    addrfilterStatType = 5
 )
 
 // loadAddrfilter returns the embedded CollectionSpec for addrfilter.
