@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -70,7 +71,12 @@ func main() {
 	var eg errgroup.Group
 
 	eg.Go(func() error {
-		return filter.Start(ctx, kills)
+		if err := filter.Start(ctx, kills); err != nil {
+			cancel()
+			return err
+		}
+
+		return nil
 	})
 
 	eg.Go(func() error {
@@ -86,12 +92,14 @@ func main() {
 		logger.Fatalw("couldn't read stats map", "err", err)
 	}
 
-	logger.Info("protection finished")
-	logger.Infow("execution stats",
-		"tp_entered", stats.TPEntered,
-		"get_current_task_failed", stats.GetCurrentTaskFailed,
-		"ignore_pid", stats.IgnorePID,
-		"read_pid_failed", stats.ReadPIDFailed,
-		"ringbuf_reserve_failed", stats.RingbufReserveFailed,
-	)
+	if _, err := filter.ReadStacktraceMap(); err != nil {
+		logger.Fatalw("couldn't read stacktrace debug map: %w", err)
+	}
+
+	bts, err := json.Marshal(&stats)
+	if err != nil {
+		logger.Fatalw("failed to marshall stats", "err", err)
+	}
+
+	fmt.Println(string(bts))
 }

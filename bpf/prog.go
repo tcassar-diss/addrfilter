@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
@@ -147,6 +148,7 @@ func (f *Filter) readKills(ctx context.Context, rd *ringbuf.Reader, kills chan<-
 func (f *Filter) initMaps() error {
 	initFns := []func(*addrfilterObjects) error{
 		initStatsMap,
+		initStacktraceDebugMap,
 	}
 
 	for _, fn := range initFns {
@@ -168,6 +170,10 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 		addrfilterStatTypeIGNORE_PID,
 		addrfilterStatTypeKILL_RINGBUF_RESERVE_FAILED,
 		addrfilterStatTypePID_READ_FAILED,
+		addrfilterStatTypeLIBC_NOT_LOADED,
+		addrfilterStatTypeGET_STACK_FAILED,
+		addrfilterStatTypeCALLSITE_LIBC,
+		addrfilterStatTypeSTACK_TOO_SHORT,
 	}
 
 	for _, s := range ss {
@@ -182,6 +188,10 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 		IgnorePID:            stats[addrfilterStatTypeIGNORE_PID],
 		RingbufReserveFailed: stats[addrfilterStatTypeKILL_RINGBUF_RESERVE_FAILED],
 		ReadPIDFailed:        stats[addrfilterStatTypePID_READ_FAILED],
+		LibcNotLoaded:        stats[addrfilterStatTypeLIBC_NOT_LOADED],
+		GetStackFailed:       stats[addrfilterStatTypeGET_STACK_FAILED],
+		CallsiteLibc:         stats[addrfilterStatTypeCALLSITE_LIBC],
+		StackTooShort:        stats[addrfilterStatTypeSTACK_TOO_SHORT],
 	}, nil
 }
 
@@ -203,7 +213,7 @@ func (f *Filter) ReadLibcMap() map[int32]*VMRange {
 			"start", fmt.Sprintf("0x%x", vmRange.Start),
 			"end", fmt.Sprintf("0x%x", vmRange.End),
 		)
-	
+
 		if _, ok := libcMap[pid]; ok {
 			f.logger.Warnw("duplicate libc entry found in libc map", "pid", pid)
 		}
@@ -215,4 +225,29 @@ func (f *Filter) ReadLibcMap() map[int32]*VMRange {
 	}
 
 	return libcMap
+}
+
+// ReadStacktraceMap is a debug function which can be used to dump the output of the libc map
+func (f *Filter) ReadStacktraceMap() (*Stacktrace, error) {
+	var trace addrfilterStackTraceT
+
+	if err := f.objects.StackDbgMap.Lookup(new(int32), &trace); err != nil {
+		if errors.Is(err, io.ErrUnexpectedEOF) {
+			f.logger.Infow("empty debug map")
+			return &Stacktrace{}, nil
+		}
+		return nil, fmt.Errorf("failed to read from stack dbg map: %w", err)
+	}
+
+	f.logger.Infow("stacktrace debug",
+		"callsite", trace.Callsite,
+		"frames walked", trace.FramesWalked,
+		"stacktrace", trace.Stacktrace,
+	)
+
+	return &Stacktrace{
+		Stack:        trace.Stacktrace,
+		FramesWalked: trace.FramesWalked,
+		CallSite:     trace.Callsite,
+	}, nil
 }

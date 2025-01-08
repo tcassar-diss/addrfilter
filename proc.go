@@ -9,6 +9,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var killfn func(*zap.SugaredLogger, int32) error = warn
+
 // Kill will kill a processes.
 func Kill(ctx context.Context, logger *zap.SugaredLogger, pids <-chan int32) error {
 	var pid int32
@@ -20,16 +22,14 @@ func Kill(ctx context.Context, logger *zap.SugaredLogger, pids <-chan int32) err
 		case pid = <-pids:
 		}
 
-		logger.Infow("killing process", "pid", pid)
-
-		if err := kill(pid); err != nil {
-			// todo: shouldn't exit the security filter
+		if err := killfn(logger, pid); err != nil {
 			return fmt.Errorf("failed to kill pid %d: %w", pid, err)
 		}
 	}
 }
 
-func kill(pid int32) error {
+func kill(logger *zap.SugaredLogger, pid int32) error {
+	logger.Infow("killing process", "pid", pid)
 	p, err := os.FindProcess(int(pid))
 	if err != nil {
 		return fmt.Errorf("failed to find process: %w", err)
@@ -38,6 +38,12 @@ func kill(pid int32) error {
 	if err := p.Signal(syscall.SIGKILL); err != nil {
 		return fmt.Errorf("failed to kill process: %w", err)
 	}
+
+	return nil
+}
+
+func warn(logger *zap.SugaredLogger, pid int32) error {
+	logger.Infow("suspicious syscalls from process", "pid", pid)
 
 	return nil
 }

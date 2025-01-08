@@ -12,6 +12,13 @@ import (
 	"github.com/cilium/ebpf"
 )
 
+type addrfilterStackTraceT struct {
+	FramesWalked int32
+	_            [4]byte
+	Callsite     uint64
+	Stacktrace   [32]uint64
+}
+
 type addrfilterStatType uint32
 
 const (
@@ -20,7 +27,11 @@ const (
 	addrfilterStatTypeIGNORE_PID                  addrfilterStatType = 2
 	addrfilterStatTypeKILL_RINGBUF_RESERVE_FAILED addrfilterStatType = 3
 	addrfilterStatTypePID_READ_FAILED             addrfilterStatType = 4
-	addrfilterStatTypeSTAT_END                    addrfilterStatType = 5
+	addrfilterStatTypeLIBC_NOT_LOADED             addrfilterStatType = 5
+	addrfilterStatTypeGET_STACK_FAILED            addrfilterStatType = 6
+	addrfilterStatTypeCALLSITE_LIBC               addrfilterStatType = 7
+	addrfilterStatTypeSTACK_TOO_SHORT             addrfilterStatType = 8
+	addrfilterStatTypeSTAT_END                    addrfilterStatType = 9
 )
 
 type addrfilterVmRange struct {
@@ -80,6 +91,7 @@ type addrfilterMapSpecs struct {
 	KillMap       *ebpf.MapSpec `ebpf:"kill_map"`
 	LibcRangesMap *ebpf.MapSpec `ebpf:"libc_ranges_map"`
 	ProtectMap    *ebpf.MapSpec `ebpf:"protect_map"`
+	StackDbgMap   *ebpf.MapSpec `ebpf:"stack_dbg_map"`
 	StatsMap      *ebpf.MapSpec `ebpf:"stats_map"`
 }
 
@@ -87,6 +99,7 @@ type addrfilterMapSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type addrfilterVariableSpecs struct {
+	UnusedStDbg    *ebpf.VariableSpec `ebpf:"unused_st_dbg"`
 	UnusedStatType *ebpf.VariableSpec `ebpf:"unused_stat_type"`
 	UnusedVmRange  *ebpf.VariableSpec `ebpf:"unused_vm_range"`
 }
@@ -114,6 +127,7 @@ type addrfilterMaps struct {
 	KillMap       *ebpf.Map `ebpf:"kill_map"`
 	LibcRangesMap *ebpf.Map `ebpf:"libc_ranges_map"`
 	ProtectMap    *ebpf.Map `ebpf:"protect_map"`
+	StackDbgMap   *ebpf.Map `ebpf:"stack_dbg_map"`
 	StatsMap      *ebpf.Map `ebpf:"stats_map"`
 }
 
@@ -122,6 +136,7 @@ func (m *addrfilterMaps) Close() error {
 		m.KillMap,
 		m.LibcRangesMap,
 		m.ProtectMap,
+		m.StackDbgMap,
 		m.StatsMap,
 	)
 }
@@ -130,6 +145,7 @@ func (m *addrfilterMaps) Close() error {
 //
 // It can be passed to loadAddrfilterObjects or ebpf.CollectionSpec.LoadAndAssign.
 type addrfilterVariables struct {
+	UnusedStDbg    *ebpf.Variable `ebpf:"unused_st_dbg"`
 	UnusedStatType *ebpf.Variable `ebpf:"unused_stat_type"`
 	UnusedVmRange  *ebpf.Variable `ebpf:"unused_vm_range"`
 }
