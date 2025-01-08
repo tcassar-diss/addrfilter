@@ -46,6 +46,13 @@ func main() {
 		logger.Fatalw("failed to protect pid", "pid", pid, "err", err)
 	}
 
+	if err := filter.RegisterLibc(pid, &bpf.VMRange{
+		Start: 0,
+		End:   1,
+	}); err != nil {
+		logger.Fatalw("failed to register libc range", "pid", pid, "err", err)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// needs to be buffered s.th. select/case statements don't block

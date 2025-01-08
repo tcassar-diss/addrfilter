@@ -23,6 +23,11 @@ const (
 	addrfilterStatTypeSTAT_END                    addrfilterStatType = 5
 )
 
+type addrfilterVmRange struct {
+	Start uint64
+	End   uint64
+}
+
 // loadAddrfilter returns the embedded CollectionSpec for addrfilter.
 func loadAddrfilter() (*ebpf.CollectionSpec, error) {
 	reader := bytes.NewReader(_AddrfilterBytes)
@@ -72,9 +77,10 @@ type addrfilterProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type addrfilterMapSpecs struct {
-	KillMap    *ebpf.MapSpec `ebpf:"kill_map"`
-	ProtectMap *ebpf.MapSpec `ebpf:"protect_map"`
-	StatsMap   *ebpf.MapSpec `ebpf:"stats_map"`
+	KillMap       *ebpf.MapSpec `ebpf:"kill_map"`
+	LibcRangesMap *ebpf.MapSpec `ebpf:"libc_ranges_map"`
+	ProtectMap    *ebpf.MapSpec `ebpf:"protect_map"`
+	StatsMap      *ebpf.MapSpec `ebpf:"stats_map"`
 }
 
 // addrfilterVariableSpecs contains global variables before they are loaded into the kernel.
@@ -82,6 +88,7 @@ type addrfilterMapSpecs struct {
 // It can be passed ebpf.CollectionSpec.Assign.
 type addrfilterVariableSpecs struct {
 	UnusedStatType *ebpf.VariableSpec `ebpf:"unused_stat_type"`
+	UnusedVmRange  *ebpf.VariableSpec `ebpf:"unused_vm_range"`
 }
 
 // addrfilterObjects contains all objects after they have been loaded into the kernel.
@@ -104,14 +111,16 @@ func (o *addrfilterObjects) Close() error {
 //
 // It can be passed to loadAddrfilterObjects or ebpf.CollectionSpec.LoadAndAssign.
 type addrfilterMaps struct {
-	KillMap    *ebpf.Map `ebpf:"kill_map"`
-	ProtectMap *ebpf.Map `ebpf:"protect_map"`
-	StatsMap   *ebpf.Map `ebpf:"stats_map"`
+	KillMap       *ebpf.Map `ebpf:"kill_map"`
+	LibcRangesMap *ebpf.Map `ebpf:"libc_ranges_map"`
+	ProtectMap    *ebpf.Map `ebpf:"protect_map"`
+	StatsMap      *ebpf.Map `ebpf:"stats_map"`
 }
 
 func (m *addrfilterMaps) Close() error {
 	return _AddrfilterClose(
 		m.KillMap,
+		m.LibcRangesMap,
 		m.ProtectMap,
 		m.StatsMap,
 	)
@@ -122,6 +131,7 @@ func (m *addrfilterMaps) Close() error {
 // It can be passed to loadAddrfilterObjects or ebpf.CollectionSpec.LoadAndAssign.
 type addrfilterVariables struct {
 	UnusedStatType *ebpf.Variable `ebpf:"unused_stat_type"`
+	UnusedVmRange  *ebpf.Variable `ebpf:"unused_vm_range"`
 }
 
 // addrfilterPrograms contains all programs after they have been loaded into the kernel.
