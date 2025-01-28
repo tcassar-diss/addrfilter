@@ -31,7 +31,8 @@ const (
 	addrfilterStatTypeGET_STACK_FAILED            addrfilterStatType = 6
 	addrfilterStatTypeCALLSITE_LIBC               addrfilterStatType = 7
 	addrfilterStatTypeSTACK_TOO_SHORT             addrfilterStatType = 8
-	addrfilterStatTypeSTAT_END                    addrfilterStatType = 9
+	addrfilterStatTypeNO_RP_MAPPING               addrfilterStatType = 9
+	addrfilterStatTypeSTAT_END                    addrfilterStatType = 10
 )
 
 type addrfilterVmRange struct {

@@ -9,7 +9,9 @@
 #define MAX_FOLLOW_ENTRIES 1024
 #define MAX_STACK_DEPTH 32
 
-#define DEBUG 1
+/* MAX_SYSCALL_NUMBER determined by taking the highest
+   defined constant in /usr/include/asm/unistd_64.h */
+#define MAX_SYSCALL_NUMBER 461
 
 enum stat_type {
     GET_CUR_TASK_FAILED, /* when the bpf helper get_current_task fails */
@@ -20,16 +22,33 @@ enum stat_type {
     LIBC_NOT_LOADED,  /* Libc address space not loaded for current PID */
     GET_STACK_FAILED,  /* bpf_get_stack helper returned a non-0 error */
     CALLSITE_LIBC,  /* no non-libc call site could be found */
-    STACK_TOO_SHORT, /* no non-libc call site could be found AND last read RP != 0*/
+    STACK_TOO_SHORT, /* no non-libc call site could be found AND last read RP != 0 */
+    NO_RP_MAPPING, /* rp didn't come from mapped space */
     STAT_END,  /* not an event: used to autogenerate number of stat types for frontend */
 };
 
 #define N_STAT_TYPES STAT_END
-enum stat_type *unused_stat_type __attribute__((unused));
 
+/* stack_trace_t is used to report the stack trace of a
+   blocked syscall to userspace.*/
+struct stack_trace_t {
+    int frames_walked;
+    u64 callsite;
+    u64 stacktrace[MAX_STACK_DEPTH];
+};
+
+/* vm_range stores the start and end of a memory mapped region. */
+struct vm_range {
+    u64 start;
+    u64 end;
+};
+
+struct vm_range *unused_vm_range __attribute__((unused));
+enum stat_type *unused_stat_type __attribute__((unused));
+struct stack_trace_t *unused_st_dbg __attribute__((unused));
 
 /*  stat_map holds stats about program execution.
-    Write to it with the `record_stat` helper.
+    write to it with the `record_stat` helper.
 
     stat_map needs to be configured in userspace with all fields zerod  */
 struct {
@@ -39,7 +58,6 @@ struct {
     __uint(max_entries, N_STAT_TYPES);
     __uint(map_flags, 0);
 } stats_map SEC(".maps");
-
 
 /*  protect_map contains PID(s) that the filter should be applied to.
 
@@ -54,7 +72,6 @@ struct {
 	__uint(map_flags, 0);
 } protect_map SEC(".maps");
 
-
 /*
 kill_map contains PIDs for the frontend to kill
 
@@ -66,19 +83,9 @@ struct {
     __uint(max_entries, MAX_KILL_ENTRIES);
 } kill_map SEC(".maps");
 
-
-/* vm_range stores the start and end of a memory mapped region. */
-struct vm_range {
-    u64 start;
-    u64 end;
-};
-
-struct vm_range *unused_vm_range __attribute__((unused));
-
-
 /*  libc_ranges_map stores the memory location of libc for each process.
 
-    It is used while walking the stack in-kernel to identify the first non-libc
+    it is used while walking the stack in-kernel to identify the first non-libc
     sycall call site, so that the correct filter can be applied.
 */
 struct {
@@ -89,15 +96,6 @@ struct {
     __uint(map_flags, 0);
 } libc_ranges_map SEC(".maps");
 
-
-struct stack_trace_t {
-    int frames_walked;
-    u64 callsite;
-    u64 stacktrace[MAX_STACK_DEPTH];
-};
-
-struct stack_trace_t *unused_st_dbg __attribute__((unused));
-
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
     __uint(key_size, sizeof(int32));
@@ -106,17 +104,16 @@ struct {
     __uint(map_flags, 0);
 } stack_dbg_map SEC(".maps");
 
-
 /*   record_stat logs an event in the stats map. Fails silently!
 
     args:
         stat: statistic to log
 
     returns:
-        void: This means that the update fails silently, but what is there
+        void: this means that the update fails silently, but what is there
                 to do if logging doesn't work?
 
-    Every return statement should be preceeded by a call to record_stat.
+    every return statement should be preceeded by a call to record_stat.
 */
 __always_inline void record_stat(enum stat_type stat) {
     u64 *s_count =bpf_map_lookup_elem(&stats_map, &stat);
@@ -192,7 +189,7 @@ __always_inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx, u64* 
     r->frames_walked = 0;
 
     for (int i = 0; i < frames; i++) {
-        /* this is logically superfluous, but must be kept to keep the verifier happy */
+        /* this is superfluous, but must be included to keep the verifier happy */
         if (i >= sizeof(r->stacktrace) / sizeof(u64)) {
             return -1;
         }

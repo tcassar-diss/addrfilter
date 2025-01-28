@@ -58,14 +58,20 @@ func main() {
 
 	// needs to be buffered s.th. select/case statements don't block
 	kills := make(chan int32, 16)
-	stopper := make(chan os.Signal)
+	stopper := make(chan os.Signal, 1)
 
 	signal.Notify(stopper, os.Interrupt)
 
 	go func() {
-		<-stopper
-		logger.Infow("received ctrl-c, exiting")
-		cancel()
+		for {
+			select {
+			case <-stopper:
+				logger.Infow("received ctrl-c, exiting")
+				cancel()
+			case <-ctx.Done():
+				return
+			}
+		}
 	}()
 
 	var eg errgroup.Group
