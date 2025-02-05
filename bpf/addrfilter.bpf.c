@@ -9,6 +9,8 @@
 #define MAX_FOLLOW_ENTRIES 1024
 #define MAX_STACK_DEPTH 32
 
+#define SIGKILL 9
+
 /* MAX_SYSCALL_NUMBER determined by taking the highest
    defined constant in /usr/include/asm/unistd_64.h */
 #define MAX_SYSCALL_NUMBER 461
@@ -37,7 +39,7 @@ struct stack_trace_t {
     u64 stacktrace[MAX_STACK_DEPTH];
 };
 
-/* vm_range stores the start and end of a memory mapped region. */
+/* vm_range stores the start and end of a memory mapped region */
 struct vm_range {
     u64 start;
     u64 end;
@@ -96,6 +98,10 @@ struct {
     __uint(map_flags, 0);
 } libc_ranges_map SEC(".maps");
 
+/* stack_dbg_map is used to hold the stacktrace on each system call.
+
+  thus, the stacktrace that lead to the blocked system call is available to userspace.
+*/
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
     __uint(key_size, sizeof(int32));
@@ -132,7 +138,7 @@ __always_inline void record_stat(enum stat_type stat) {
     returns:
         void
 */
-__always_inline void kill(pid_t pid) {
+__always_inline void report_kill(pid_t pid) {
     pid_t *kill;
     kill = bpf_ringbuf_reserve(&kill_map, sizeof(pid_t), 0);
     if (!kill) {
@@ -170,7 +176,7 @@ __always_inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx, u64* 
     const int32 zero = 0;
     struct stack_trace_t *r = (struct stack_trace_t*)bpf_map_lookup_elem(&stack_dbg_map, &zero);
     if (!r) {
-
+        // todo: record stat
         return -1;
     }
 
@@ -214,7 +220,6 @@ __always_inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx, u64* 
     return 0;
 }
 
-
 SEC("raw_tp/sys_enter")
 int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
     record_stat(TP_ENTERED);
@@ -247,7 +252,10 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
         return -1;
     }
 
-    kill(pid);
+    res = bpf_send_signal(SIGKILL);
+    if (res != 0) {
+        report_kill(pid);
+    }
 
     return 0;
 }
