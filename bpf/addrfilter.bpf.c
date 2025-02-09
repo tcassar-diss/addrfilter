@@ -2,12 +2,17 @@
 
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_tracing.h>
 
 #include <stdbool.h>
 
-#define MAX_KILL_ENTRIES 4096
-#define MAX_FOLLOW_ENTRIES 1024
+
+/* (Some) Numbers are all arbitrary. todo: make them meaningful */
+#define MAX_KILL_ENTRIES 4096  // needs to be a page size multiple
+#define MAX_FOLLOW_ENTRIES 1024  /* maximum number of processes that addrfilter will protect */
 #define MAX_STACK_DEPTH 32
+#define MAX_FILENAME_LEN 256
+#define MAX_ADDRSPACE_LEN 128  /* maximum supported number of ways of "slicing up" address space */
 
 #define SIGKILL 9
 
@@ -15,10 +20,11 @@
    defined constant in /usr/include/asm/unistd_64.h */
 #define MAX_SYSCALL_NUMBER 461
 
+
 enum stat_type {
     GET_CUR_TASK_FAILED, /* when the bpf helper get_current_task fails */
     TP_ENTERED,  /* every time syscall is entered */
-    IGNORE_PID,  /* dont filter, PID isn't being traced */
+    IGNORE_PID,  /* don't filter, PID isn't being traced */
     KILL_RINGBUF_RESERVE_FAILED,  /* failed to reserve a slot in the kill ringbuffer */
     PID_READ_FAILED,  /* failed to read PID from current task */
     LIBC_NOT_LOADED,  /* Libc address space not loaded for current PID */
@@ -26,10 +32,13 @@ enum stat_type {
     CALLSITE_LIBC,  /* no non-libc call site could be found */
     STACK_TOO_SHORT, /* no non-libc call site could be found AND last read RP != 0 */
     NO_RP_MAPPING, /* rp didn't come from mapped space */
+    FILENAME_TOO_LONG, /* filename was longer than MAX_FILENAME_LEN characters */
+    FIND_VMA_FAILED, /* failed to find vma from rp */
     STAT_END,  /* not an event: used to autogenerate number of stat types for frontend */
 };
 
 #define N_STAT_TYPES STAT_END
+
 
 /* stack_trace_t is used to report the stack trace of a
    blocked syscall to userspace.*/
@@ -39,15 +48,19 @@ struct stack_trace_t {
     u64 stacktrace[MAX_STACK_DEPTH];
 };
 
+
 /* vm_range stores the start and end of a memory mapped region */
 struct vm_range {
     u64 start;
     u64 end;
+    char filename[MAX_FILENAME_LEN];
 };
+
 
 struct vm_range *unused_vm_range __attribute__((unused));
 enum stat_type *unused_stat_type __attribute__((unused));
 struct stack_trace_t *unused_st_dbg __attribute__((unused));
+
 
 /*  stat_map holds stats about program execution.
     write to it with the `record_stat` helper.
@@ -60,6 +73,7 @@ struct {
     __uint(max_entries, N_STAT_TYPES);
     __uint(map_flags, 0);
 } stats_map SEC(".maps");
+
 
 /*  protect_map contains PID(s) that the filter should be applied to.
 
@@ -74,6 +88,7 @@ struct {
 	__uint(map_flags, 0);
 } protect_map SEC(".maps");
 
+
 /*
 kill_map contains PIDs for the frontend to kill
 
@@ -84,6 +99,7 @@ struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, MAX_KILL_ENTRIES);
 } kill_map SEC(".maps");
+
 
 /*  libc_ranges_map stores the memory location of libc for each process.
 
@@ -97,6 +113,24 @@ struct {
     __uint(max_entries, MAX_FOLLOW_ENTRIES);
     __uint(map_flags, 0);
 } libc_ranges_map SEC(".maps");
+
+
+/* path_whitelist_map associates a path in /proc/PID/maps with a syscall whitelist.
+
+  note that this is NOT PID SPECIFIC, as it would be too complicated to generate whitelists which are fork specific.
+  thus, whitelists need to be generated with this behaviour in mind.
+
+  that is, for each library, the whitelist must include all syscalls made by each fork.
+  this design supports the address space of forks changing, but not whitelists changing.
+*/
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(key_size, sizeof(char[MAX_FILENAME_LEN]));  /* keyed by pathname in process virtual address space */
+    __uint(value_size, sizeof(bool[MAX_SYSCALL_NUMBER])); /* whitelist format: TRUE => allow syscall, FALSE => block syscall */
+    __uint(max_entries, MAX_ADDRSPACE_LEN);  /* at most one whitelist for each "slice" of address space */
+    __uint(map_flags, 0);
+} path_whitelist_map SEC(".maps");
+
 
 /* stack_dbg_map is used to hold the stacktrace on each system call.
 
@@ -138,7 +172,7 @@ __always_inline void record_stat(enum stat_type stat) {
     returns:
         void
 */
-__always_inline void report_kill(pid_t pid) {
+__always_inline void kill(pid_t pid) {
     pid_t *kill;
     kill = bpf_ringbuf_reserve(&kill_map, sizeof(pid_t), 0);
     if (!kill) {
@@ -209,16 +243,67 @@ __always_inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx, u64* 
     }
 
     rp = &r->callsite;
-    if (rp == 0) {
+    if (*rp == 0) {
         record_stat(CALLSITE_LIBC);
     }
 
-    if (rp == 0 && r->stacktrace[frames-1] != 0) {
-        record_stat(STACK_TOO_SHORT);
+    // todo: report stack too short
+
+    return 0;
+}
+
+/*  memory_filename contains a filename and its length.*/
+struct memory_filename {
+    char d_iname[MAX_FILENAME_LEN]; /* this is just the dname, not a whole path */
+    int size;
+};
+
+
+/* get_dname retrieves the filename mapped to a memory region */
+static long get_dname(struct task_struct *task, struct vm_area_struct *vma, struct memory_filename *data) {
+    struct dentry *dentry;
+    struct qstr d_name;
+
+    if (!data) {
+        return 0;
+    }
+
+    if (vma->vm_file) {
+        dentry = vma->vm_file->f_path.dentry;
+
+        if (bpf_probe_read_kernel(&d_name, sizeof(d_name), &dentry->d_name)) {
+            return 0;
+        }
+
+        if (d_name.len >= MAX_FILENAME_LEN) {
+            record_stat(FILENAME_TOO_LONG);
+            return 0;
+        }
+
+        data->size = bpf_probe_read_kernel_str(data->d_iname, MAX_FILENAME_LEN + 1, d_name.name) <= 0;
+        if (data->size <= 0) {
+            return 0;
+        }
     }
 
     return 0;
 }
+
+__always_inline int assign_filename(struct task_struct* task, u64 rp, struct memory_filename *mem_filename) {
+    int res = bpf_find_vma(task, rp, get_dname, &mem_filename, 0);
+    if  (res == -2) {
+        // will not happen under normal operation, so log message is okay performance-wise.
+        static const char fmt[] = "failed to map %d to a range in memory map: are libc ranges correct? %d";
+        bpf_trace_printk(fmt, sizeof(fmt), res, rp);
+        }
+        if (res != 0) {
+            record_stat(FIND_VMA_FAILED);
+            return -1;
+        }
+
+    return 0;
+}
+
 
 SEC("raw_tp/sys_enter")
 int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
@@ -226,9 +311,11 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
 
     u64* rp;
     pid_t pid;
-    struct task_struct *task;
 
-    task = (struct task_struct*)bpf_get_current_task();
+    struct task_struct *task;
+    struct memory_filename mem_filename = {};
+
+    task = bpf_get_current_task_btf();
     if (!task) {
         record_stat(GET_CUR_TASK_FAILED);
         return 1;
@@ -247,15 +334,24 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
         return 0;
     }
 
-    res = find_syscall_site(ctx, rp, pid);
-    if (res != 0) {
+    if (!find_syscall_site(ctx, rp, pid)){
         return -1;
     }
 
-    res = bpf_send_signal(SIGKILL);
-    if (res != 0) {
-        report_kill(pid);
+    if (!rp) {
+        return -1;
     }
+
+    if (!assign_filename(task, *rp, &mem_filename)) {
+        return -1;
+    }
+
+    // res = bpf_send_signal(SIGKILL);
+    // if (res != 0) {
+    //     kill(pid);
+    // }
+
+    kill(pid);
 
     return 0;
 }

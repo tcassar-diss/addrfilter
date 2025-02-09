@@ -10,6 +10,8 @@ type Stats struct {
 	GetStackFailed       uint64
 	CallsiteLibc         uint64
 	StackTooShort        uint64
+	FilenameTooLong      uint64
+	FindVMAFailed        uint64
 }
 
 type Stacktrace struct {

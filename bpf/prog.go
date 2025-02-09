@@ -81,6 +81,7 @@ func (f *Filter) Start(ctx context.Context, kills chan int32) error {
 	return nil
 }
 
+// ProtectPID will add a PID to the filter list.
 func (f *Filter) ProtectPID(pid int32) error {
 	f.logger.Infow("adding process to filter list", "pid", pid)
 
@@ -107,7 +108,7 @@ func (f *Filter) RegisterLibc(pid int32, vmRange *VMRange) error {
 		"end", fmt.Sprintf("0x%x", vmRange.End),
 	)
 
-	if err := f.objects.LibcRangesMap.Put(pid, addrfilterVmRange{vmRange.Start, vmRange.End}); err != nil {
+	if err := f.objects.LibcRangesMap.Put(pid, addrfilterVmRange{Start: vmRange.Start, End: vmRange.End}); err != nil {
 		return fmt.Errorf("failed to insert vmrange for pid: %w", err)
 	}
 
@@ -174,6 +175,8 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 		addrfilterStatTypeGET_STACK_FAILED,
 		addrfilterStatTypeCALLSITE_LIBC,
 		addrfilterStatTypeSTACK_TOO_SHORT,
+		addrfilterStatTypeFILENAME_TOO_LONG,
+		addrfilterStatTypeFIND_VMA_FAILED,
 	}
 
 	for _, s := range ss {
@@ -192,6 +195,8 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 		GetStackFailed:       stats[addrfilterStatTypeGET_STACK_FAILED],
 		CallsiteLibc:         stats[addrfilterStatTypeCALLSITE_LIBC],
 		StackTooShort:        stats[addrfilterStatTypeSTACK_TOO_SHORT],
+		FilenameTooLong:      stats[addrfilterStatTypeFILENAME_TOO_LONG],
+		FindVMAFailed:        stats[addrfilterStatTypeFIND_VMA_FAILED],
 	}, nil
 }
 

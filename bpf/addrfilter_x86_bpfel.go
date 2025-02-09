@@ -32,12 +32,15 @@ const (
 	addrfilterStatTypeCALLSITE_LIBC               addrfilterStatType = 7
 	addrfilterStatTypeSTACK_TOO_SHORT             addrfilterStatType = 8
 	addrfilterStatTypeNO_RP_MAPPING               addrfilterStatType = 9
-	addrfilterStatTypeSTAT_END                    addrfilterStatType = 10
+	addrfilterStatTypeFILENAME_TOO_LONG           addrfilterStatType = 10
+	addrfilterStatTypeFIND_VMA_FAILED             addrfilterStatType = 11
+	addrfilterStatTypeSTAT_END                    addrfilterStatType = 12
 )
 
 type addrfilterVmRange struct {
-	Start uint64
-	End   uint64
+	Start    uint64
+	End      uint64
+	Filename [256]int8
 }
 
 // loadAddrfilter returns the embedded CollectionSpec for addrfilter.
@@ -89,11 +92,12 @@ type addrfilterProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type addrfilterMapSpecs struct {
-	KillMap       *ebpf.MapSpec `ebpf:"kill_map"`
-	LibcRangesMap *ebpf.MapSpec `ebpf:"libc_ranges_map"`
-	ProtectMap    *ebpf.MapSpec `ebpf:"protect_map"`
-	StackDbgMap   *ebpf.MapSpec `ebpf:"stack_dbg_map"`
-	StatsMap      *ebpf.MapSpec `ebpf:"stats_map"`
+	KillMap          *ebpf.MapSpec `ebpf:"kill_map"`
+	LibcRangesMap    *ebpf.MapSpec `ebpf:"libc_ranges_map"`
+	PathWhitelistMap *ebpf.MapSpec `ebpf:"path_whitelist_map"`
+	ProtectMap       *ebpf.MapSpec `ebpf:"protect_map"`
+	StackDbgMap      *ebpf.MapSpec `ebpf:"stack_dbg_map"`
+	StatsMap         *ebpf.MapSpec `ebpf:"stats_map"`
 }
 
 // addrfilterVariableSpecs contains global variables before they are loaded into the kernel.
@@ -125,17 +129,19 @@ func (o *addrfilterObjects) Close() error {
 //
 // It can be passed to loadAddrfilterObjects or ebpf.CollectionSpec.LoadAndAssign.
 type addrfilterMaps struct {
-	KillMap       *ebpf.Map `ebpf:"kill_map"`
-	LibcRangesMap *ebpf.Map `ebpf:"libc_ranges_map"`
-	ProtectMap    *ebpf.Map `ebpf:"protect_map"`
-	StackDbgMap   *ebpf.Map `ebpf:"stack_dbg_map"`
-	StatsMap      *ebpf.Map `ebpf:"stats_map"`
+	KillMap          *ebpf.Map `ebpf:"kill_map"`
+	LibcRangesMap    *ebpf.Map `ebpf:"libc_ranges_map"`
+	PathWhitelistMap *ebpf.Map `ebpf:"path_whitelist_map"`
+	ProtectMap       *ebpf.Map `ebpf:"protect_map"`
+	StackDbgMap      *ebpf.Map `ebpf:"stack_dbg_map"`
+	StatsMap         *ebpf.Map `ebpf:"stats_map"`
 }
 
 func (m *addrfilterMaps) Close() error {
 	return _AddrfilterClose(
 		m.KillMap,
 		m.LibcRangesMap,
+		m.PathWhitelistMap,
 		m.ProtectMap,
 		m.StackDbgMap,
 		m.StatsMap,
