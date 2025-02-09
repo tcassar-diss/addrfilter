@@ -8,7 +8,6 @@
 
 
 /* (Some) Numbers are all arbitrary. todo: make them meaningful */
-#define MAX_KILL_ENTRIES 4096  // needs to be a page size multiple
 #define MAX_FOLLOW_ENTRIES 1024  /* maximum number of processes that addrfilter will protect */
 #define MAX_STACK_DEPTH 32
 #define MAX_FILENAME_LEN 256
@@ -19,7 +18,7 @@
 /* MAX_SYSCALL_NUMBER determined by taking the highest
    defined constant in /usr/include/asm/unistd_64.h */
 #define MAX_SYSCALL_NUMBER 461
-
+#define WHITELIST_LEN 58  /* ceil(461 / 8): bitmap for whitelist */
 
 enum stat_type {
     GET_CUR_TASK_FAILED, /* when the bpf helper get_current_task fails */
@@ -34,6 +33,10 @@ enum stat_type {
     NO_RP_MAPPING, /* rp didn't come from mapped space */
     FILENAME_TOO_LONG, /* filename was longer than MAX_FILENAME_LEN characters */
     FIND_VMA_FAILED, /* failed to find vma from rp */
+    NO_VMA_BACKING_FILE, /* RP was called from somewhere with no backing file */
+    WHITELIST_MISSING, /* no whitelist associated with memory address space filename */
+    SYSCALL_BLOCKED, /* blocked a syscall */
+    SEND_SIGNAL_FAILED, /* bpf_send_signal returned non-zero value: backup kill async*/
     STAT_END,  /* not an event: used to autogenerate number of stat types for frontend */
 };
 
@@ -89,18 +92,6 @@ struct {
 } protect_map SEC(".maps");
 
 
-/*
-kill_map contains PIDs for the frontend to kill
-
-killing a process cannot be done from BPF, so the best
-thing to do is let the frontend handle it.
-*/
-struct {
-    __uint(type, BPF_MAP_TYPE_RINGBUF);
-    __uint(max_entries, MAX_KILL_ENTRIES);
-} kill_map SEC(".maps");
-
-
 /*  libc_ranges_map stores the memory location of libc for each process.
 
     it is used while walking the stack in-kernel to identify the first non-libc
@@ -114,6 +105,15 @@ struct {
     __uint(map_flags, 0);
 } libc_ranges_map SEC(".maps");
 
+/* syscall_whitelist is a bitmap where 1 <=> syscall _allowed_ */
+struct syscall_whitelist {
+    uint8_t bitmap[WHITELIST_LEN];
+};
+
+/* check_whitelist_field returns the 1 iff a syscall is allowed */
+static __always_inline bool check_whitelist_field(struct syscall_whitelist *entry, int field_index) {
+    return (entry->bitmap[field_index / 8] & (1 << (field_index % 8))) != 0;
+}
 
 /* path_whitelist_map associates a path in /proc/PID/maps with a syscall whitelist.
 
@@ -126,7 +126,7 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(key_size, sizeof(char[MAX_FILENAME_LEN]));  /* keyed by pathname in process virtual address space */
-    __uint(value_size, sizeof(bool[MAX_SYSCALL_NUMBER])); /* whitelist format: TRUE => allow syscall, FALSE => block syscall */
+    __uint(value_size, sizeof(struct syscall_whitelist));
     __uint(max_entries, MAX_ADDRSPACE_LEN);  /* at most one whitelist for each "slice" of address space */
     __uint(map_flags, 0);
 } path_whitelist_map SEC(".maps");
@@ -164,27 +164,21 @@ __always_inline void record_stat(enum stat_type stat) {
     __sync_fetch_and_add(s_count, 1);
 }
 
-/* kill is a helper which instructs the frontend to kill a PID.
+/* strcmp is a helper which safely compares two null terminated strings */
+int strcmp(const char *cs, const char *ct)
+    {
+        unsigned char c1, c2;
 
-    args:
-        pid: pid of process to kill
-
-    returns:
-        void
-*/
-__always_inline void kill(pid_t pid) {
-    pid_t *kill;
-    kill = bpf_ringbuf_reserve(&kill_map, sizeof(pid_t), 0);
-    if (!kill) {
-        record_stat(KILL_RINGBUF_RESERVE_FAILED);
-        return;
+        while (1) {
+            c1 = *cs++;
+            c2 = *ct++;
+            if (c1 != c2)
+                return c1 < c2 ? -1 : 1;
+            if (!c1)
+                break;
+        }
+        return 0;
     }
-
-    *kill = pid;
-
-    bpf_ringbuf_submit(kill, 0);
-}
-
 
 /*  find_syscall_site walks the stack to find the first non-libc return pointer.
 
@@ -313,7 +307,6 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
     pid_t pid;
 
     struct task_struct *task;
-    struct memory_filename mem_filename = {};
 
     task = bpf_get_current_task_btf();
     if (!task) {
@@ -342,16 +335,36 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
         return -1;
     }
 
+    struct memory_filename mem_filename = {};
     if (!assign_filename(task, *rp, &mem_filename)) {
         return -1;
     }
 
-    // res = bpf_send_signal(SIGKILL);
-    // if (res != 0) {
-    //     kill(pid);
-    // }
+    if (strcmp(mem_filename.d_iname, "")) {
+        record_stat(NO_VMA_BACKING_FILE);
+        // use default whitelist: stored under ""
+    }
 
-    kill(pid);
+    struct syscall_whitelist *whitelist;
+    whitelist = (struct syscall_whitelist *)bpf_map_lookup_elem(&path_whitelist_map, &mem_filename.d_iname);
+    if (!whitelist) {
+        /* decide how to handle missing whitelist: probably default to "" whitelist: need to make sure that it always exists in userspace though */
+        record_stat(WHITELIST_MISSING);
+        return 0;
+    }
+
+    if (check_whitelist_field(whitelist, ctx->args[1]) == 1) {
+        return 0;
+    }
+
+    record_stat(SYSCALL_BLOCKED);
+
+    // todo: report pid to userspace for group kill
+    // (or async if bpf_send_signal)
+
+    if (!bpf_send_signal(SIGKILL)) {
+        record_stat(SEND_SIGNAL_FAILED);
+    }
 
     return 0;
 }

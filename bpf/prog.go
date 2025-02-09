@@ -57,26 +57,26 @@ func (f *Filter) Start(ctx context.Context, kills chan int32) error {
 	}
 	defer tp.Close()
 
-	rd, err := ringbuf.NewReader(f.objects.KillMap)
-	if err != nil {
-		return fmt.Errorf("failed to get reader to sc_events_map: %w", err)
-	}
-	defer rd.Close()
+	// rd, err := ringbuf.NewReader(f.objects.KillMap)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to get reader to sc_events_map: %w", err)
+	// }
+	// defer rd.Close()
 
-	// ringbuf read blocks, so close from up here when context is cancelled.
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				rd.Close()
-				return
-			}
-		}
-	}()
+	// // ringbuf read blocks, so close from up here when context is cancelled.
+	// go func() {
+	// 	for {
+	// 		select {
+	// 		case <-ctx.Done():
+	// 			rd.Close()
+	// 			return
+	// 		}
+	// 	}
+	// }()
 
-	if err := f.readKills(ctx, rd, kills); err != nil {
-		return fmt.Errorf("failed to read from kills map: %w", err)
-	}
+	// if err := f.readKills(ctx, rd, kills); err != nil {
+	// 	return fmt.Errorf("failed to read from kills map: %w", err)
+	// }
 
 	return nil
 }

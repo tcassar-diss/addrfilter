@@ -34,7 +34,11 @@ const (
 	addrfilterStatTypeNO_RP_MAPPING               addrfilterStatType = 9
 	addrfilterStatTypeFILENAME_TOO_LONG           addrfilterStatType = 10
 	addrfilterStatTypeFIND_VMA_FAILED             addrfilterStatType = 11
-	addrfilterStatTypeSTAT_END                    addrfilterStatType = 12
+	addrfilterStatTypeNO_VMA_BACKING_FILE         addrfilterStatType = 12
+	addrfilterStatTypeWHITELIST_MISSING           addrfilterStatType = 13
+	addrfilterStatTypeSYSCALL_BLOCKED             addrfilterStatType = 14
+	addrfilterStatTypeSEND_SIGNAL_FAILED          addrfilterStatType = 15
+	addrfilterStatTypeSTAT_END                    addrfilterStatType = 16
 )
 
 type addrfilterVmRange struct {
@@ -92,7 +96,6 @@ type addrfilterProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type addrfilterMapSpecs struct {
-	KillMap          *ebpf.MapSpec `ebpf:"kill_map"`
 	LibcRangesMap    *ebpf.MapSpec `ebpf:"libc_ranges_map"`
 	PathWhitelistMap *ebpf.MapSpec `ebpf:"path_whitelist_map"`
 	ProtectMap       *ebpf.MapSpec `ebpf:"protect_map"`
@@ -129,7 +132,6 @@ func (o *addrfilterObjects) Close() error {
 //
 // It can be passed to loadAddrfilterObjects or ebpf.CollectionSpec.LoadAndAssign.
 type addrfilterMaps struct {
-	KillMap          *ebpf.Map `ebpf:"kill_map"`
 	LibcRangesMap    *ebpf.Map `ebpf:"libc_ranges_map"`
 	PathWhitelistMap *ebpf.Map `ebpf:"path_whitelist_map"`
 	ProtectMap       *ebpf.Map `ebpf:"protect_map"`
@@ -139,7 +141,6 @@ type addrfilterMaps struct {
 
 func (m *addrfilterMaps) Close() error {
 	return _AddrfilterClose(
-		m.KillMap,
 		m.LibcRangesMap,
 		m.PathWhitelistMap,
 		m.ProtectMap,
