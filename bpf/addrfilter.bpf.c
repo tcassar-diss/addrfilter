@@ -30,6 +30,7 @@ enum stat_type {
     CALLSITE_LIBC,  /* no non-libc call site could be found */
     STACK_TOO_SHORT, /* no non-libc call site could be found AND last read RP != 0 */
     NO_RP_MAPPING, /* rp didn't come from mapped space */
+    RP_NULL_AFTER_MAP, /* rp mapping failed silently (shouldn't happen!) */
     FILENAME_TOO_LONG, /* filename was longer than MAX_FILENAME_LEN characters */
     FIND_VMA_FAILED, /* failed to find vma from rp */
     NO_VMA_BACKING_FILE, /* RP was called from somewhere with no backing file */
@@ -91,18 +92,26 @@ struct {
 } protect_map SEC(".maps");
 
 
-/*  libc_ranges_map stores the memory location of libc for each process.
+/*  libc_range_maps stores the memory location of libc.
+
+    libc_range will be the same across all processes being traced, as a base
+    assumption of addrfilter is that libc won't change.
+
+    addrfilter also assumes that the only way a new PID will end up in the follow
+    map is by a fork in the originally traced process. since forking copies the
+    parent's address space to the child's address space, libc will be consistent
+    across all child processes.
 
     it is used while walking the stack in-kernel to identify the first non-libc
     sycall call site, so that the correct filter can be applied.
 */
 struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(key_size, sizeof(pid_t));
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(key_size, sizeof(int32));
     __uint(value_size, sizeof(struct vm_range));
-    __uint(max_entries, MAX_FOLLOW_ENTRIES);
+    __uint(max_entries, 1);
     __uint(map_flags, 0);
-} libc_ranges_map SEC(".maps");
+} libc_range_map SEC(".maps");
 
 /* syscall_whitelist is a bitmap where 1 <=> syscall _allowed_ */
 struct syscall_whitelist {
@@ -114,7 +123,7 @@ static __always_inline bool check_whitelist_field(struct syscall_whitelist *entr
     return (entry->bitmap[field_index / 8] & (1 << (field_index % 8))) != 0;
 }
 
-/* path_whitelist_map associates a path in /proc/PID/maps with a syscall whitelist.
+/* path_whitelist_map associates a filename from /proc/PID/maps with a syscall whitelist.
 
   note that this is NOT PID SPECIFIC, as it would be too complicated to generate whitelists which are fork specific.
   thus, whitelists need to be generated with this behaviour in mind.
@@ -182,7 +191,7 @@ int strcmp(const char *cs, const char *ct) {
 
 /*  find_syscall_site walks the stack to find the first non-libc return pointer.
 
-    for this, it uses information from the libc_ranges_map.
+    for this, it uses information from the libc_range_map.
     If identification fails, a reason will be logged by the function.
 
     args:
@@ -195,13 +204,13 @@ int strcmp(const char *cs, const char *ct) {
         -1 on exit.
 */
 __always_inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx, u64* rp, pid_t pid) {
-    struct vm_range *libc_range = (struct vm_range *)bpf_map_lookup_elem(&libc_ranges_map, &pid);
+    const int32 zero = 0;
+    struct vm_range *libc_range = (struct vm_range *)bpf_map_lookup_elem(&libc_range_map, &zero);
     if (!libc_range) {
         record_stat(LIBC_NOT_LOADED);
         return -1;
     }
 
-    const int32 zero = 0;
     struct stack_trace_t *r = (struct stack_trace_t*)bpf_map_lookup_elem(&stack_dbg_map, &zero);
     if (!r) {
         // todo: record stat
@@ -322,9 +331,7 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
         return 1;
     }
 
-    int res;
-    res = bpf_probe_read(&pid, sizeof(pid), &task->tgid);
-    if (res != 0) {
+    if (bpf_probe_read(&pid, sizeof(pid), &task->tgid) != 0) {
         record_stat(PID_READ_FAILED);
         return 1;
     }
@@ -340,6 +347,7 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
     }
 
     if (!rp) {
+        record_stat(RP_NULL_AFTER_MAP);
         return -1;
     }
 

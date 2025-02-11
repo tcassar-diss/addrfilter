@@ -11,7 +11,6 @@ import (
 
 	"github.com/tcassar-diss/addrfilter/bpf"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -69,18 +68,8 @@ func main() {
 		}
 	}()
 
-	var eg errgroup.Group
-
-	eg.Go(func() error {
-		if err := filter.Start(ctx); err != nil {
-			cancel()
-			return err
-		}
-
-		return nil
-	})
-
-	if err := eg.Wait(); err != nil {
+	if err := filter.Start(ctx); err != nil {
+		cancel()
 		logger.Fatalw("error occurred while filtering", "err", err)
 	}
 

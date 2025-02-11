@@ -31,13 +31,14 @@ const (
 	addrfilterStatTypeCALLSITE_LIBC       addrfilterStatType = 6
 	addrfilterStatTypeSTACK_TOO_SHORT     addrfilterStatType = 7
 	addrfilterStatTypeNO_RP_MAPPING       addrfilterStatType = 8
-	addrfilterStatTypeFILENAME_TOO_LONG   addrfilterStatType = 9
-	addrfilterStatTypeFIND_VMA_FAILED     addrfilterStatType = 10
-	addrfilterStatTypeNO_VMA_BACKING_FILE addrfilterStatType = 11
-	addrfilterStatTypeWHITELIST_MISSING   addrfilterStatType = 12
-	addrfilterStatTypeSYSCALL_BLOCKED     addrfilterStatType = 13
-	addrfilterStatTypeSEND_SIGNAL_FAILED  addrfilterStatType = 14
-	addrfilterStatTypeSTAT_END            addrfilterStatType = 15
+	addrfilterStatTypeRP_NULL_AFTER_MAP   addrfilterStatType = 9
+	addrfilterStatTypeFILENAME_TOO_LONG   addrfilterStatType = 10
+	addrfilterStatTypeFIND_VMA_FAILED     addrfilterStatType = 11
+	addrfilterStatTypeNO_VMA_BACKING_FILE addrfilterStatType = 12
+	addrfilterStatTypeWHITELIST_MISSING   addrfilterStatType = 13
+	addrfilterStatTypeSYSCALL_BLOCKED     addrfilterStatType = 14
+	addrfilterStatTypeSEND_SIGNAL_FAILED  addrfilterStatType = 15
+	addrfilterStatTypeSTAT_END            addrfilterStatType = 16
 )
 
 type addrfilterVmRange struct {
@@ -95,7 +96,7 @@ type addrfilterProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type addrfilterMapSpecs struct {
-	LibcRangesMap    *ebpf.MapSpec `ebpf:"libc_ranges_map"`
+	LibcRangeMap     *ebpf.MapSpec `ebpf:"libc_range_map"`
 	PathWhitelistMap *ebpf.MapSpec `ebpf:"path_whitelist_map"`
 	ProtectMap       *ebpf.MapSpec `ebpf:"protect_map"`
 	StackDbgMap      *ebpf.MapSpec `ebpf:"stack_dbg_map"`
@@ -131,7 +132,7 @@ func (o *addrfilterObjects) Close() error {
 //
 // It can be passed to loadAddrfilterObjects or ebpf.CollectionSpec.LoadAndAssign.
 type addrfilterMaps struct {
-	LibcRangesMap    *ebpf.Map `ebpf:"libc_ranges_map"`
+	LibcRangeMap     *ebpf.Map `ebpf:"libc_range_map"`
 	PathWhitelistMap *ebpf.Map `ebpf:"path_whitelist_map"`
 	ProtectMap       *ebpf.Map `ebpf:"protect_map"`
 	StackDbgMap      *ebpf.Map `ebpf:"stack_dbg_map"`
@@ -140,7 +141,7 @@ type addrfilterMaps struct {
 
 func (m *addrfilterMaps) Close() error {
 	return _AddrfilterClose(
-		m.LibcRangesMap,
+		m.LibcRangeMap,
 		m.PathWhitelistMap,
 		m.ProtectMap,
 		m.StackDbgMap,

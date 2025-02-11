@@ -89,7 +89,7 @@ func (f *Filter) RegisterLibc(pid int32, start, end uint64) error {
 		"end", fmt.Sprintf("0x%x", end),
 	)
 
-	if err := f.objects.LibcRangesMap.Put(
+	if err := f.objects.LibcRangeMap.Put(
 		pid,
 		addrfilterVmRange{
 			Start:    start,
@@ -132,6 +132,8 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 		addrfilterStatTypeGET_STACK_FAILED,
 		addrfilterStatTypeCALLSITE_LIBC,
 		addrfilterStatTypeSTACK_TOO_SHORT,
+		addrfilterStatTypeNO_RP_MAPPING,
+		addrfilterStatTypeRP_NULL_AFTER_MAP,
 		addrfilterStatTypeFILENAME_TOO_LONG,
 		addrfilterStatTypeFIND_VMA_FAILED,
 		addrfilterStatTypeNO_VMA_BACKING_FILE,
@@ -156,6 +158,8 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 		GetStackFailed:       stats[addrfilterStatTypeGET_STACK_FAILED],
 		CallsiteLibc:         stats[addrfilterStatTypeCALLSITE_LIBC],
 		StackTooShort:        stats[addrfilterStatTypeSTACK_TOO_SHORT],
+		NoRPMapping:          stats[addrfilterStatTypeNO_RP_MAPPING],
+		RPNullAfterMap:       stats[addrfilterStatTypeRP_NULL_AFTER_MAP],
 		FilenameTooLong:      stats[addrfilterStatTypeFILENAME_TOO_LONG],
 		FindVMAFailed:        stats[addrfilterStatTypeFIND_VMA_FAILED],
 		NoBackingVMA:         stats[addrfilterStatTypeNO_VMA_BACKING_FILE],
@@ -174,7 +178,7 @@ func (f *Filter) ReadLibcMap() map[int32]*addrfilterVmRange {
 		vmRange addrfilterVmRange
 	)
 
-	bpfLRM := f.objects.LibcRangesMap.Iterate()
+	bpfLRM := f.objects.LibcRangeMap.Iterate()
 	for {
 		next := bpfLRM.Next(&pid, &vmRange)
 
