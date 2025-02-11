@@ -12,6 +12,10 @@ type Stats struct {
 	StackTooShort        uint64
 	FilenameTooLong      uint64
 	FindVMAFailed        uint64
+	NoBackingVMA         uint64
+	WhitelistMissing     uint64
+	SyscallBlocked       uint64
+	SendSignalFailed     uint64
 }
 
 type Stacktrace struct {

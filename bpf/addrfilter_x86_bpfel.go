@@ -22,23 +22,22 @@ type addrfilterStackTraceT struct {
 type addrfilterStatType uint32
 
 const (
-	addrfilterStatTypeGET_CUR_TASK_FAILED         addrfilterStatType = 0
-	addrfilterStatTypeTP_ENTERED                  addrfilterStatType = 1
-	addrfilterStatTypeIGNORE_PID                  addrfilterStatType = 2
-	addrfilterStatTypeKILL_RINGBUF_RESERVE_FAILED addrfilterStatType = 3
-	addrfilterStatTypePID_READ_FAILED             addrfilterStatType = 4
-	addrfilterStatTypeLIBC_NOT_LOADED             addrfilterStatType = 5
-	addrfilterStatTypeGET_STACK_FAILED            addrfilterStatType = 6
-	addrfilterStatTypeCALLSITE_LIBC               addrfilterStatType = 7
-	addrfilterStatTypeSTACK_TOO_SHORT             addrfilterStatType = 8
-	addrfilterStatTypeNO_RP_MAPPING               addrfilterStatType = 9
-	addrfilterStatTypeFILENAME_TOO_LONG           addrfilterStatType = 10
-	addrfilterStatTypeFIND_VMA_FAILED             addrfilterStatType = 11
-	addrfilterStatTypeNO_VMA_BACKING_FILE         addrfilterStatType = 12
-	addrfilterStatTypeWHITELIST_MISSING           addrfilterStatType = 13
-	addrfilterStatTypeSYSCALL_BLOCKED             addrfilterStatType = 14
-	addrfilterStatTypeSEND_SIGNAL_FAILED          addrfilterStatType = 15
-	addrfilterStatTypeSTAT_END                    addrfilterStatType = 16
+	addrfilterStatTypeGET_CUR_TASK_FAILED addrfilterStatType = 0
+	addrfilterStatTypeTP_ENTERED          addrfilterStatType = 1
+	addrfilterStatTypeIGNORE_PID          addrfilterStatType = 2
+	addrfilterStatTypePID_READ_FAILED     addrfilterStatType = 3
+	addrfilterStatTypeLIBC_NOT_LOADED     addrfilterStatType = 4
+	addrfilterStatTypeGET_STACK_FAILED    addrfilterStatType = 5
+	addrfilterStatTypeCALLSITE_LIBC       addrfilterStatType = 6
+	addrfilterStatTypeSTACK_TOO_SHORT     addrfilterStatType = 7
+	addrfilterStatTypeNO_RP_MAPPING       addrfilterStatType = 8
+	addrfilterStatTypeFILENAME_TOO_LONG   addrfilterStatType = 9
+	addrfilterStatTypeFIND_VMA_FAILED     addrfilterStatType = 10
+	addrfilterStatTypeNO_VMA_BACKING_FILE addrfilterStatType = 11
+	addrfilterStatTypeWHITELIST_MISSING   addrfilterStatType = 12
+	addrfilterStatTypeSYSCALL_BLOCKED     addrfilterStatType = 13
+	addrfilterStatTypeSEND_SIGNAL_FAILED  addrfilterStatType = 14
+	addrfilterStatTypeSTAT_END            addrfilterStatType = 15
 )
 
 type addrfilterVmRange struct {

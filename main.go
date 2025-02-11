@@ -30,6 +30,8 @@ func main() {
 
 	logger.Infow("program loaded successfully")
 
+	// todo: refactor into proper cli
+
 	if len(os.Args) < 2 {
 		fmt.Println("usage: addrfilter [PID] (incorrect number of args supplied)")
 		os.Exit(1)
@@ -47,17 +49,10 @@ func main() {
 		logger.Fatalw("failed to protect pid", "pid", pid, "err", err)
 	}
 
-	if err := filter.RegisterLibc(pid, &bpf.VMRange{
-		Start: 0,
-		End:   1,
-	}); err != nil {
-		logger.Fatalw("failed to register libc range", "pid", pid, "err", err)
-	}
-
+	// todo: register libc
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// needs to be buffered s.th. select/case statements don't block
-	kills := make(chan int32, 16)
 	stopper := make(chan os.Signal, 1)
 
 	signal.Notify(stopper, os.Interrupt)
@@ -77,16 +72,12 @@ func main() {
 	var eg errgroup.Group
 
 	eg.Go(func() error {
-		if err := filter.Start(ctx, kills); err != nil {
+		if err := filter.Start(ctx); err != nil {
 			cancel()
 			return err
 		}
 
 		return nil
-	})
-
-	eg.Go(func() error {
-		return Kill(ctx, logger, kills)
 	})
 
 	if err := eg.Wait(); err != nil {

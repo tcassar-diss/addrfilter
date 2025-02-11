@@ -24,7 +24,6 @@ enum stat_type {
     GET_CUR_TASK_FAILED, /* when the bpf helper get_current_task fails */
     TP_ENTERED,  /* every time syscall is entered */
     IGNORE_PID,  /* don't filter, PID isn't being traced */
-    KILL_RINGBUF_RESERVE_FAILED,  /* failed to reserve a slot in the kill ringbuffer */
     PID_READ_FAILED,  /* failed to read PID from current task */
     LIBC_NOT_LOADED,  /* Libc address space not loaded for current PID */
     GET_STACK_FAILED,  /* bpf_get_stack helper returned a non-0 error */
@@ -164,21 +163,22 @@ __always_inline void record_stat(enum stat_type stat) {
     __sync_fetch_and_add(s_count, 1);
 }
 
-/* strcmp is a helper which safely compares two null terminated strings */
-int strcmp(const char *cs, const char *ct)
-    {
-        unsigned char c1, c2;
+/* strcmp is a helper which safely compares two strings */
+int strcmp(const char *cs, const char *ct) {
+    unsigned char c1, c2;
 
-        while (1) {
-            c1 = *cs++;
-            c2 = *ct++;
-            if (c1 != c2)
-                return c1 < c2 ? -1 : 1;
-            if (!c1)
-                break;
-        }
-        return 0;
+    while (1) {
+        c1 = *cs++;
+        c2 = *ct++;
+        if (c1 != c2)
+             return c1 < c2 ? -1 : 1;
+         if (!c1) {
+             break;
+         }
     }
+
+    return 0;
+}
 
 /*  find_syscall_site walks the stack to find the first non-libc return pointer.
 
@@ -262,6 +262,14 @@ static long get_dname(struct task_struct *task, struct vm_area_struct *vma, stru
         return 0;
     }
 
+    // todo:
+    //  find_vma will return the va closest to the provided value
+    //  so double check that the va assigned is actually correct
+    // counter:
+    //  might be fine (but would imply bpf_find_vma has different behaviour to find_vma)
+    //  bpf:    https://docs.ebpf.io/linux/helper-function/bpf_find_vma/
+    //  kernel: https://www.kernel.org/doc/gorman/html/understand/understand007.html
+
     if (vma->vm_file) {
         dentry = vma->vm_file->f_path.dentry;
 
@@ -327,7 +335,7 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
         return 0;
     }
 
-    if (!find_syscall_site(ctx, rp, pid)){
+    if (find_syscall_site(ctx, rp, pid) != 0){
         return -1;
     }
 
@@ -336,11 +344,11 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
     }
 
     struct memory_filename mem_filename = {};
-    if (!assign_filename(task, *rp, &mem_filename)) {
+    if (assign_filename(task, *rp, &mem_filename) != 0) {
         return -1;
     }
 
-    if (strcmp(mem_filename.d_iname, "")) {
+    if (strcmp(mem_filename.d_iname, "") != 0) {
         record_stat(NO_VMA_BACKING_FILE);
         // use default whitelist: stored under ""
     }
@@ -353,6 +361,7 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
         return 0;
     }
 
+    /* allow if whitelist field is 1 */
     if (check_whitelist_field(whitelist, ctx->args[1]) == 1) {
         return 0;
     }
