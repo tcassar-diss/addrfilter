@@ -20,12 +20,15 @@
 #define MAX_SYSCALL_NUMBER 461
 #define WHITELIST_LEN 58  /* ceil(461 / 8): bitmap for whitelist */
 
+#define DEBUG 0
+
 enum stat_type {
     GET_CUR_TASK_FAILED, /* when the bpf helper get_current_task fails */
     TP_ENTERED,  /* every time syscall is entered */
     IGNORE_PID,  /* don't filter, PID isn't being traced */
     PID_READ_FAILED,  /* failed to read PID from current task */
     LIBC_NOT_LOADED,  /* Libc address space not loaded for current PID */
+    STK_DBG_EMPTY,
     GET_STACK_FAILED,  /* bpf_get_stack helper returned a non-0 error */
     CALLSITE_LIBC,  /* no non-libc call site could be found */
     STACK_TOO_SHORT, /* no non-libc call site could be found AND last read RP != 0 */
@@ -117,6 +120,8 @@ struct {
 struct syscall_whitelist {
     uint8_t bitmap[WHITELIST_LEN];
 };
+
+struct syscall_whitelist *unused_syscall_whitelist __attribute__((unused));
 
 /* check_whitelist_field returns the 1 iff a syscall is allowed */
 static __always_inline bool check_whitelist_field(struct syscall_whitelist *entry, int field_index) {
@@ -213,7 +218,7 @@ __always_inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx, u64* 
 
     struct stack_trace_t *r = (struct stack_trace_t*)bpf_map_lookup_elem(&stack_dbg_map, &zero);
     if (!r) {
-        // todo: record stat
+        record_stat(STK_DBG_EMPTY);
         return -1;
     }
 
@@ -238,7 +243,7 @@ __always_inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx, u64* 
         }
 
         r->callsite = r->stacktrace[i];
-        if (libc_range->start <= r->callsite && r->callsite < libc_range->end) {
+        if (!(libc_range->start <= r->callsite && r->callsite < libc_range->end)) {
             break;
         }
 
@@ -250,7 +255,10 @@ __always_inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx, u64* 
         record_stat(CALLSITE_LIBC);
     }
 
-    // todo: report stack too short
+    #if DEBUG
+    static const char fmt2[] = "syscall site found @ 0x%lx";
+    bpf_trace_printk(fmt2, sizeof(fmt2), r->callsite);
+    #endif
 
     return 0;
 }
@@ -312,6 +320,11 @@ __always_inline int assign_filename(struct task_struct* task, u64 rp, struct mem
             return -1;
         }
 
+    #if DEBUG
+    static const char fmt[] = "assigned %d to %s";
+    bpf_trace_printk(fmt, sizeof(fmt), mem_filename->d_iname, rp);
+    #endif /* DEBUG */
+
     return 0;
 }
 
@@ -336,11 +349,16 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
         return 1;
     }
 
+    // todo: check if ppid in follow
+    // if so, add pid to follow and continue.
     bool *protect = (bool *)bpf_map_lookup_elem(&protect_map, &pid);
     if (!protect) {
         record_stat(IGNORE_PID);
         return 0;
     }
+
+    static const char fmt[] = "protecting!";
+    bpf_trace_printk(fmt, sizeof(fmt));
 
     if (find_syscall_site(ctx, rp, pid) != 0){
         return -1;
@@ -358,7 +376,8 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
 
     if (strcmp(mem_filename.d_iname, "") != 0) {
         record_stat(NO_VMA_BACKING_FILE);
-        // use default whitelist: stored under ""
+        // todo: decide if a default whitelist makes sense? (e.g. union of all syscalls from other address spaces?)
+        return 0;
     }
 
     struct syscall_whitelist *whitelist;
@@ -379,7 +398,7 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
     // todo: report pid to userspace for group kill
     // (or async if bpf_send_signal)
 
-    if (!bpf_send_signal(SIGKILL)) {
+    if (bpf_send_signal(SIGKILL) != 0) {
         record_stat(SEND_SIGNAL_FAILED);
     }
 

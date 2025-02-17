@@ -41,19 +41,14 @@ func TestFindLibc(t *testing.T) {
 		},
 	}
 
-	var (
-		gotVmRange *VMRange
-		gotErr     error
-	)
-
 	for _, c := range cases {
 		t.Run(c.filepath, func(t *testing.T) {
-			gotVmRange, gotErr = FindLibc(c.filepath)
-		})
+			gotVmRange, gotErr := FindLibc(c.filepath)
 
-		require.Equal(t, c.vmRange, gotVmRange)
-		if c.err != nil {
-			require.ErrorIs(t, gotErr, c.err)
-		}
+			require.Equal(t, c.vmRange, gotVmRange)
+			if c.err != nil {
+				require.ErrorIs(t, gotErr, c.err)
+			}
+		})
 	}
 }

@@ -10,7 +10,10 @@ import (
 	"go.uber.org/zap"
 )
 
-var ErrBadLibcRange = errors.New("nonsensical libc range given")
+var (
+	ErrBadLibcRange           = errors.New("nonsensical libc range given")
+	ErrWhitelistAlreadyExists = errors.New("whitelist already exists")
+)
 
 // Filter is the userspace counterpart to the `addrfilter` bpf program.
 //
@@ -90,7 +93,7 @@ func (f *Filter) RegisterLibc(pid int32, start, end uint64) error {
 	)
 
 	if err := f.objects.LibcRangeMap.Put(
-		pid,
+		int32(zero),
 		addrfilterVmRange{
 			Start:    start,
 			End:      end,
@@ -129,6 +132,7 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 		addrfilterStatTypeIGNORE_PID,
 		addrfilterStatTypePID_READ_FAILED,
 		addrfilterStatTypeLIBC_NOT_LOADED,
+		addrfilterStatTypeSTK_DBG_EMPTY,
 		addrfilterStatTypeGET_STACK_FAILED,
 		addrfilterStatTypeCALLSITE_LIBC,
 		addrfilterStatTypeSTACK_TOO_SHORT,
@@ -140,7 +144,6 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 		addrfilterStatTypeWHITELIST_MISSING,
 		addrfilterStatTypeSYSCALL_BLOCKED,
 		addrfilterStatTypeSEND_SIGNAL_FAILED,
-		addrfilterStatTypeSTAT_END,
 	}
 
 	for _, s := range ss {
@@ -155,6 +158,7 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 		IgnorePID:            stats[addrfilterStatTypeIGNORE_PID],
 		ReadPIDFailed:        stats[addrfilterStatTypePID_READ_FAILED],
 		LibcNotLoaded:        stats[addrfilterStatTypeLIBC_NOT_LOADED],
+		StackDebugEmpty:      stats[addrfilterStatTypeSTK_DBG_EMPTY],
 		GetStackFailed:       stats[addrfilterStatTypeGET_STACK_FAILED],
 		CallsiteLibc:         stats[addrfilterStatTypeCALLSITE_LIBC],
 		StackTooShort:        stats[addrfilterStatTypeSTACK_TOO_SHORT],
@@ -224,4 +228,18 @@ func (f *Filter) ReadStacktraceMap() (*Stacktrace, error) {
 		FramesWalked: trace.FramesWalked,
 		CallSite:     trace.Callsite,
 	}, nil
+}
+
+// RegisterWhitelist writes a Whitelist to BPF.
+func (f *Filter) RegisterWhitelist(whitelist *Whitelist) error {
+	var w addrfilterSyscallWhitelist
+
+	err := f.objects.PathWhitelistMap.Lookup(&whitelist.Filename, &w)
+	if err != nil {
+		if w.Bitmap != [58]uint8{} {
+			return fmt.Errorf("%w: non-zerod bitmap already exists", ErrWhitelistAlreadyExists)
+		}
+	}
+
+	return nil
 }

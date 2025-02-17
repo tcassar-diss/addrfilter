@@ -48,7 +48,23 @@ func main() {
 		logger.Fatalw("failed to protect pid", "pid", pid, "err", err)
 	}
 
-	// todo: register libc
+	job := ProtectJob{
+		PID: pid,
+		Whitelists: []bpf.Whitelist{
+			{
+				"print",
+				[]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13},
+			},
+		},
+		Cfg: nil,
+	}
+
+	if err = job.Register(filter); err != nil {
+		logger.Fatalw("failed to register protection job", "err", err)
+	}
+
+	logger.Infow("loaded protection job")
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// needs to be buffered s.th. select/case statements don't block

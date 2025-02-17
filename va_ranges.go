@@ -13,7 +13,7 @@ var ErrFindLibcFailed = errors.New("failed to find libc mapping")
 
 // LibcRegex matches lines in /proc/PID/maps which
 //   - Have 64 bit start and end addresses
-//   - Contain a file `libc.so.6`; doesn't check preceeding filepath
+//   - Contain a file `libc.so.6`; doesn't check preceding filepath
 //
 // Start range is placed in match group 1, end range in match group 2
 var LibcRegex = regexp.MustCompile(
@@ -58,7 +58,7 @@ func FindLibc(path string) (*VMRange, error) {
 
 		lEnd, err := strconv.ParseUint(addresses[2], 16, 64)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert lower range to integer: %w", err)
+			return nil, fmt.Errorf("failed to convert upper range to integer: %w", err)
 		}
 
 		if lStart < libcRange.Start {

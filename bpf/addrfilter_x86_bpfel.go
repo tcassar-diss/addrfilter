@@ -27,19 +27,22 @@ const (
 	addrfilterStatTypeIGNORE_PID          addrfilterStatType = 2
 	addrfilterStatTypePID_READ_FAILED     addrfilterStatType = 3
 	addrfilterStatTypeLIBC_NOT_LOADED     addrfilterStatType = 4
-	addrfilterStatTypeGET_STACK_FAILED    addrfilterStatType = 5
-	addrfilterStatTypeCALLSITE_LIBC       addrfilterStatType = 6
-	addrfilterStatTypeSTACK_TOO_SHORT     addrfilterStatType = 7
-	addrfilterStatTypeNO_RP_MAPPING       addrfilterStatType = 8
-	addrfilterStatTypeRP_NULL_AFTER_MAP   addrfilterStatType = 9
-	addrfilterStatTypeFILENAME_TOO_LONG   addrfilterStatType = 10
-	addrfilterStatTypeFIND_VMA_FAILED     addrfilterStatType = 11
-	addrfilterStatTypeNO_VMA_BACKING_FILE addrfilterStatType = 12
-	addrfilterStatTypeWHITELIST_MISSING   addrfilterStatType = 13
-	addrfilterStatTypeSYSCALL_BLOCKED     addrfilterStatType = 14
-	addrfilterStatTypeSEND_SIGNAL_FAILED  addrfilterStatType = 15
-	addrfilterStatTypeSTAT_END            addrfilterStatType = 16
+	addrfilterStatTypeSTK_DBG_EMPTY       addrfilterStatType = 5
+	addrfilterStatTypeGET_STACK_FAILED    addrfilterStatType = 6
+	addrfilterStatTypeCALLSITE_LIBC       addrfilterStatType = 7
+	addrfilterStatTypeSTACK_TOO_SHORT     addrfilterStatType = 8
+	addrfilterStatTypeNO_RP_MAPPING       addrfilterStatType = 9
+	addrfilterStatTypeRP_NULL_AFTER_MAP   addrfilterStatType = 10
+	addrfilterStatTypeFILENAME_TOO_LONG   addrfilterStatType = 11
+	addrfilterStatTypeFIND_VMA_FAILED     addrfilterStatType = 12
+	addrfilterStatTypeNO_VMA_BACKING_FILE addrfilterStatType = 13
+	addrfilterStatTypeWHITELIST_MISSING   addrfilterStatType = 14
+	addrfilterStatTypeSYSCALL_BLOCKED     addrfilterStatType = 15
+	addrfilterStatTypeSEND_SIGNAL_FAILED  addrfilterStatType = 16
+	addrfilterStatTypeSTAT_END            addrfilterStatType = 17
 )
+
+type addrfilterSyscallWhitelist struct{ Bitmap [58]uint8 }
 
 type addrfilterVmRange struct {
 	Start    uint64
@@ -107,9 +110,10 @@ type addrfilterMapSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type addrfilterVariableSpecs struct {
-	UnusedStDbg    *ebpf.VariableSpec `ebpf:"unused_st_dbg"`
-	UnusedStatType *ebpf.VariableSpec `ebpf:"unused_stat_type"`
-	UnusedVmRange  *ebpf.VariableSpec `ebpf:"unused_vm_range"`
+	UnusedStDbg            *ebpf.VariableSpec `ebpf:"unused_st_dbg"`
+	UnusedStatType         *ebpf.VariableSpec `ebpf:"unused_stat_type"`
+	UnusedSyscallWhitelist *ebpf.VariableSpec `ebpf:"unused_syscall_whitelist"`
+	UnusedVmRange          *ebpf.VariableSpec `ebpf:"unused_vm_range"`
 }
 
 // addrfilterObjects contains all objects after they have been loaded into the kernel.
@@ -153,9 +157,10 @@ func (m *addrfilterMaps) Close() error {
 //
 // It can be passed to loadAddrfilterObjects or ebpf.CollectionSpec.LoadAndAssign.
 type addrfilterVariables struct {
-	UnusedStDbg    *ebpf.Variable `ebpf:"unused_st_dbg"`
-	UnusedStatType *ebpf.Variable `ebpf:"unused_stat_type"`
-	UnusedVmRange  *ebpf.Variable `ebpf:"unused_vm_range"`
+	UnusedStDbg            *ebpf.Variable `ebpf:"unused_st_dbg"`
+	UnusedStatType         *ebpf.Variable `ebpf:"unused_stat_type"`
+	UnusedSyscallWhitelist *ebpf.Variable `ebpf:"unused_syscall_whitelist"`
+	UnusedVmRange          *ebpf.Variable `ebpf:"unused_vm_range"`
 }
 
 // addrfilterPrograms contains all programs after they have been loaded into the kernel.
