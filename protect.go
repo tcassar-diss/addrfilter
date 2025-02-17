@@ -5,27 +5,11 @@ import (
 	"github.com/tcassar-diss/addrfilter/bpf"
 )
 
-// WarnMode specifies what action the filter should take when a blacklisted syscall is detected.
-type WarnMode string
-
-var (
-	// KillPID specifies that only the "malicious" PID is killed when a disallowed syscall happens.
-	KillPID WarnMode = "kill-pid"
-	// KillAll specifies that all PIDs being traced are killed when a disallowed syscall happens.
-	KillAll WarnMode = "kill-all"
-	// Warn will simply warn userspace when a disallowed syscall happens - nothing is killed.
-	Warn WarnMode = "warn"
-)
-
-type ProtectCfg struct {
-	Action WarnMode
-}
-
 // ProtectJob specifies which program to protect, and how to do so.
 type ProtectJob struct {
 	PID        int32
 	Whitelists []*bpf.Whitelist
-	Cfg        *ProtectCfg
+	Cfg        *bpf.FilterCfg
 }
 
 // Register will register a protection job with kernel space as specified. It will:
@@ -45,6 +29,10 @@ func (j *ProtectJob) Register(filter *bpf.Filter) error {
 
 	if err := filter.RegisterWhitelists(j.Whitelists); err != nil {
 		return fmt.Errorf("failed to register whitelists: %w", err)
+	}
+
+	if err := filter.RegisterCfg(); err != nil {
+		return fmt.Errorf("failed to register config: %w", err)
 	}
 
 	if err := filter.ProtectPID(j.PID); err != nil {

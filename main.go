@@ -22,14 +22,16 @@ func main() {
 	logger := l.Sugar()
 	defer l.Sync()
 
-	filter, err := bpf.LoadFilter(logger)
+	cfg := bpf.FilterCfg{
+		Action: bpf.Warn,
+	}
+
+	filter, err := bpf.LoadFilter(logger, &cfg)
 	if err != nil {
 		logger.Fatalw("failed to load bpf program", "err", err)
 	}
 
 	logger.Infow("program loaded successfully")
-
-	// todo: refactor into proper cli
 
 	if len(os.Args) < 2 {
 		fmt.Println("usage: addrfilter [PID] (incorrect number of args supplied)")
@@ -56,14 +58,14 @@ func main() {
 				func() []uint {
 					w := make([]uint, 461)
 					for i := 0; i < 461; i++ {
-						w[i] = uint(i)
+						w[i] = uint(0) // allow all for dev purposes
 					}
 
 					return w
 				}(),
 			},
 		},
-		Cfg: nil,
+		Cfg: &cfg,
 	}
 
 	if err = job.Register(filter); err != nil {

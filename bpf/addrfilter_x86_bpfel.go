@@ -12,6 +12,22 @@ import (
 	"github.com/cilium/ebpf"
 )
 
+type addrfilterConfigType uint32
+
+const (
+	addrfilterConfigTypeKILL_MODE addrfilterConfigType = 0
+	addrfilterConfigTypeCFG_END   addrfilterConfigType = 1
+)
+
+type addrfilterKillMode uint32
+
+const (
+	addrfilterKillModeKILL_PID      addrfilterKillMode = 0
+	addrfilterKillModeKILL_ALL      addrfilterKillMode = 1
+	addrfilterKillModeWARN          addrfilterKillMode = 2
+	addrfilterKillModeKILL_MODE_END addrfilterKillMode = 3
+)
+
 type addrfilterStackTraceT struct {
 	FramesWalked int32
 	_            [4]byte
@@ -22,26 +38,28 @@ type addrfilterStackTraceT struct {
 type addrfilterStatType uint32
 
 const (
-	addrfilterStatTypeGET_CUR_TASK_FAILED addrfilterStatType = 0
-	addrfilterStatTypeTP_ENTERED          addrfilterStatType = 1
-	addrfilterStatTypeIGNORE_PID          addrfilterStatType = 2
-	addrfilterStatTypePID_READ_FAILED     addrfilterStatType = 3
-	addrfilterStatTypePPID_READ_FAILED    addrfilterStatType = 4
-	addrfilterStatTypeFOLLOW_FORK_FAILED  addrfilterStatType = 5
-	addrfilterStatTypeLIBC_NOT_LOADED     addrfilterStatType = 6
-	addrfilterStatTypeSTK_DBG_EMPTY       addrfilterStatType = 7
-	addrfilterStatTypeGET_STACK_FAILED    addrfilterStatType = 8
-	addrfilterStatTypeCALLSITE_LIBC       addrfilterStatType = 9
-	addrfilterStatTypeSTACK_TOO_SHORT     addrfilterStatType = 10
-	addrfilterStatTypeNO_RP_MAPPING       addrfilterStatType = 11
-	addrfilterStatTypeRP_NULL_AFTER_MAP   addrfilterStatType = 12
-	addrfilterStatTypeFILENAME_TOO_LONG   addrfilterStatType = 13
-	addrfilterStatTypeFIND_VMA_FAILED     addrfilterStatType = 14
-	addrfilterStatTypeNO_VMA_BACKING_FILE addrfilterStatType = 15
-	addrfilterStatTypeWHITELIST_MISSING   addrfilterStatType = 16
-	addrfilterStatTypeSYSCALL_BLOCKED     addrfilterStatType = 17
-	addrfilterStatTypeSEND_SIGNAL_FAILED  addrfilterStatType = 18
-	addrfilterStatTypeSTAT_END            addrfilterStatType = 19
+	addrfilterStatTypeGET_CUR_TASK_FAILED      addrfilterStatType = 0
+	addrfilterStatTypeTP_ENTERED               addrfilterStatType = 1
+	addrfilterStatTypeIGNORE_PID               addrfilterStatType = 2
+	addrfilterStatTypePID_READ_FAILED          addrfilterStatType = 3
+	addrfilterStatTypePPID_READ_FAILED         addrfilterStatType = 4
+	addrfilterStatTypeFOLLOW_FORK_FAILED       addrfilterStatType = 5
+	addrfilterStatTypeLIBC_NOT_LOADED          addrfilterStatType = 6
+	addrfilterStatTypeSTK_DBG_EMPTY            addrfilterStatType = 7
+	addrfilterStatTypeGET_STACK_FAILED         addrfilterStatType = 8
+	addrfilterStatTypeCALLSITE_LIBC            addrfilterStatType = 9
+	addrfilterStatTypeSTACK_TOO_SHORT          addrfilterStatType = 10
+	addrfilterStatTypeNO_RP_MAPPING            addrfilterStatType = 11
+	addrfilterStatTypeRP_NULL_AFTER_MAP        addrfilterStatType = 12
+	addrfilterStatTypeFILENAME_TOO_LONG        addrfilterStatType = 13
+	addrfilterStatTypeFIND_VMA_FAILED          addrfilterStatType = 14
+	addrfilterStatTypeNO_VMA_BACKING_FILE      addrfilterStatType = 15
+	addrfilterStatTypeWHITELIST_MISSING        addrfilterStatType = 16
+	addrfilterStatTypeSYSCALL_BLOCKED          addrfilterStatType = 17
+	addrfilterStatTypeSEND_SIGNAL_FAILED       addrfilterStatType = 18
+	addrfilterStatTypeKILLMODE_CFG_MISSING     addrfilterStatType = 19
+	addrfilterStatTypeWARN_FAILED_RINGBUF_FULL addrfilterStatType = 20
+	addrfilterStatTypeSTAT_END                 addrfilterStatType = 21
 )
 
 type addrfilterSyscallWhitelist struct{ Bitmap [58]uint8 }
@@ -101,17 +119,21 @@ type addrfilterProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type addrfilterMapSpecs struct {
+	CfgMap           *ebpf.MapSpec `ebpf:"cfg_map"`
 	LibcRangeMap     *ebpf.MapSpec `ebpf:"libc_range_map"`
 	PathWhitelistMap *ebpf.MapSpec `ebpf:"path_whitelist_map"`
 	ProtectMap       *ebpf.MapSpec `ebpf:"protect_map"`
 	StackDbgMap      *ebpf.MapSpec `ebpf:"stack_dbg_map"`
 	StatsMap         *ebpf.MapSpec `ebpf:"stats_map"`
+	WarnBuf          *ebpf.MapSpec `ebpf:"warn_buf"`
 }
 
 // addrfilterVariableSpecs contains global variables before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type addrfilterVariableSpecs struct {
+	UnusedConfigType       *ebpf.VariableSpec `ebpf:"unused_config_type"`
+	UnusedKillMode         *ebpf.VariableSpec `ebpf:"unused_kill_mode"`
 	UnusedStDbg            *ebpf.VariableSpec `ebpf:"unused_st_dbg"`
 	UnusedStatType         *ebpf.VariableSpec `ebpf:"unused_stat_type"`
 	UnusedSyscallWhitelist *ebpf.VariableSpec `ebpf:"unused_syscall_whitelist"`
@@ -138,20 +160,24 @@ func (o *addrfilterObjects) Close() error {
 //
 // It can be passed to loadAddrfilterObjects or ebpf.CollectionSpec.LoadAndAssign.
 type addrfilterMaps struct {
+	CfgMap           *ebpf.Map `ebpf:"cfg_map"`
 	LibcRangeMap     *ebpf.Map `ebpf:"libc_range_map"`
 	PathWhitelistMap *ebpf.Map `ebpf:"path_whitelist_map"`
 	ProtectMap       *ebpf.Map `ebpf:"protect_map"`
 	StackDbgMap      *ebpf.Map `ebpf:"stack_dbg_map"`
 	StatsMap         *ebpf.Map `ebpf:"stats_map"`
+	WarnBuf          *ebpf.Map `ebpf:"warn_buf"`
 }
 
 func (m *addrfilterMaps) Close() error {
 	return _AddrfilterClose(
+		m.CfgMap,
 		m.LibcRangeMap,
 		m.PathWhitelistMap,
 		m.ProtectMap,
 		m.StackDbgMap,
 		m.StatsMap,
+		m.WarnBuf,
 	)
 }
 
@@ -159,6 +185,8 @@ func (m *addrfilterMaps) Close() error {
 //
 // It can be passed to loadAddrfilterObjects or ebpf.CollectionSpec.LoadAndAssign.
 type addrfilterVariables struct {
+	UnusedConfigType       *ebpf.Variable `ebpf:"unused_config_type"`
+	UnusedKillMode         *ebpf.Variable `ebpf:"unused_kill_mode"`
 	UnusedStDbg            *ebpf.Variable `ebpf:"unused_st_dbg"`
 	UnusedStatType         *ebpf.Variable `ebpf:"unused_stat_type"`
 	UnusedSyscallWhitelist *ebpf.Variable `ebpf:"unused_syscall_whitelist"`

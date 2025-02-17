@@ -3,15 +3,14 @@
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
-
 #include <stdbool.h>
-
 
 /* (Some) Numbers are all arbitrary. todo: make them meaningful */
 #define MAX_FOLLOW_ENTRIES 1024  /* maximum number of processes that addrfilter will protect */
 #define MAX_STACK_DEPTH 32
 #define MAX_FILENAME_LEN 256
 #define MAX_ADDRSPACE_LEN 128  /* maximum supported number of ways of "slicing up" address space */
+#define MAX_RINGBUF_ENTRIES 4096 /* has to be a multiple of page size */
 
 #define SIGKILL 9
 
@@ -20,7 +19,7 @@
 #define MAX_SYSCALL_NUMBER 461
 #define WHITELIST_LEN 58  /* ceil(461 / 8): bitmap for whitelist */
 
-#define DEBUG 1
+#define DEBUG 0
 
 enum stat_type {
     GET_CUR_TASK_FAILED, /* when the bpf helper get_current_task fails */
@@ -42,11 +41,29 @@ enum stat_type {
     WHITELIST_MISSING, /* no whitelist associated with memory address space filename */
     SYSCALL_BLOCKED, /* blocked a syscall */
     SEND_SIGNAL_FAILED, /* bpf_send_signal returned non-zero value: backup kill async*/
+    KILLMODE_CFG_MISSING, /* no kill mode config set */
+    WARN_FAILED_RINGBUF_FULL, /* warning userspace failed as ringbuf was full */
     STAT_END,  /* not an event: used to autogenerate number of stat types for frontend */
 };
 
 #define N_STAT_TYPES STAT_END
 
+
+enum config_type {
+    KILL_MODE,
+    CFG_END,
+};
+
+#define N_CONFIG_TYPES CFG_END
+
+enum kill_mode {
+    KILL_PID,
+    KILL_ALL,
+    WARN,
+    KILL_MODE_END
+};
+
+#define N_KILL_MODES KILL_MODE_END
 
 /* stack_trace_t is used to report the stack trace of a
    blocked syscall to userspace.*/
@@ -67,6 +84,8 @@ struct vm_range {
 
 struct vm_range *unused_vm_range __attribute__((unused));
 enum stat_type *unused_stat_type __attribute__((unused));
+enum config_type *unused_config_type __attribute__((unused));
+enum kill_mode *unused_kill_mode __attribute__((unused));
 struct stack_trace_t *unused_st_dbg __attribute__((unused));
 
 
@@ -81,6 +100,61 @@ struct {
     __uint(max_entries, N_STAT_TYPES);
     __uint(map_flags, 0);
 } stats_map SEC(".maps");
+
+/*   record_stat logs an event in the stats map. Fails silently!
+
+    args:
+        stat: statistic to log
+
+    returns:
+        void: this means that the update fails silently, but what is there
+                to do if logging doesn't work?
+
+    every return statement should be preceeded by a call to record_stat.
+*/
+static inline void record_stat(enum stat_type stat) {
+    u64 *s_count =bpf_map_lookup_elem(&stats_map, &stat);
+    if (!s_count) {
+        return;
+    }
+
+    __sync_fetch_and_add(s_count, 1);
+}
+
+/*  cfg_map holds config information. */
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(key_size, sizeof(int32));
+    __uint(value_size, sizeof(int32));
+    __uint(max_entries, N_STAT_TYPES);
+    __uint(map_flags, 0);
+} cfg_map SEC(".maps");
+
+
+/* warn_buf is used to report PIDs to userspace.
+*
+* userspace can then decide what the best course of action is from there
+* (either warn or kill all processes in follow map)
+*/
+struct {
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, MAX_RINGBUF_ENTRIES);
+} warn_buf SEC(".maps");
+
+
+static inline int warn_pid(pid_t pid) {
+    pid_t* p = bpf_ringbuf_reserve(&warn_buf, sizeof(pid_t), 0);
+    if (!p) {
+        record_stat(WARN_FAILED_RINGBUF_FULL);
+        return -1;
+    }
+
+    *p = pid;
+
+    bpf_ringbuf_submit(p, 0);
+
+    return 0;
+}
 
 
 /*  protect_map contains PID(s) that the filter should be applied to.
@@ -167,25 +241,6 @@ struct {
     __uint(map_flags, 0);
 } stack_dbg_map SEC(".maps");
 
-/*   record_stat logs an event in the stats map. Fails silently!
-
-    args:
-        stat: statistic to log
-
-    returns:
-        void: this means that the update fails silently, but what is there
-                to do if logging doesn't work?
-
-    every return statement should be preceeded by a call to record_stat.
-*/
-static inline void record_stat(enum stat_type stat) {
-    u64 *s_count =bpf_map_lookup_elem(&stats_map, &stat);
-    if (!s_count) {
-        return;
-    }
-
-    __sync_fetch_and_add(s_count, 1);
-}
 
 /* strcmp is a helper which safely compares two strings  for equality */
 int strcmp(const char *cs, const char *ct) {
@@ -335,6 +390,11 @@ static inline int assign_filename(struct task_struct* task, u64 rp, struct memor
     bpf_trace_printk(fmt, sizeof(fmt), rp, mem_filename->d_iname);
     #endif /* DEBUG */
 
+    if (strcmp(mem_filename->d_iname, "") == 0) {
+        record_stat(NO_VMA_BACKING_FILE);
+        return -1;
+    }
+
     return 0;
 }
 
@@ -380,6 +440,37 @@ static inline bool apply_filter(struct task_struct *task, pid_t pid) {
 }
 
 
+/* filter will appropriately "deal with" a blacklisted syscall */
+static inline int filter(pid_t pid) {
+    int32 key = KILL_MODE;
+
+    int32 *killmode = (int32*)bpf_map_lookup_elem(&cfg_map, &key);
+    if (!killmode) {
+        return -1;
+        record_stat(KILLMODE_CFG_MISSING);
+        // /* default to kill PID */
+        if (bpf_send_signal(SIGKILL) != 0) {
+            record_stat(SEND_SIGNAL_FAILED);
+            return 0;
+        };
+    }
+
+    if (*killmode == KILL_PID || *killmode == KILL_ALL) {
+        if (*killmode == KILL_ALL) {
+            warn_pid(pid);
+        }
+
+        if (bpf_send_signal(SIGKILL) != 0) {
+            record_stat(SEND_SIGNAL_FAILED);
+        };
+    } else {
+        warn_pid(pid);
+    }
+
+    return 0;
+}
+
+
 SEC("raw_tp/sys_enter")
 int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
     record_stat(TP_ENTERED);
@@ -415,14 +506,11 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
         return -1;
     }
 
-    if (strcmp(mem_filename.d_iname, "") == 0) {
-        record_stat(NO_VMA_BACKING_FILE);
-        // todo: decide if a default whitelist makes sense? (e.g. union of all syscalls from other address spaces?)
-        return 0;
-    }
-
     struct syscall_whitelist *whitelist;
-    whitelist = (struct syscall_whitelist *)bpf_map_lookup_elem(&path_whitelist_map, &mem_filename.d_iname);
+    whitelist = (struct syscall_whitelist *)bpf_map_lookup_elem(
+        &path_whitelist_map,
+        &mem_filename.d_iname
+    );
 
     if (!whitelist) {
         record_stat(WHITELIST_MISSING);
@@ -435,14 +523,7 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
 
     record_stat(SYSCALL_BLOCKED);
 
-    // todo: report pid to userspace for group kill
-    // (or async if bpf_send_signal)
-
-    if (bpf_send_signal(SIGKILL) != 0) {
-        record_stat(SEND_SIGNAL_FAILED);
-    }
-
-    return 0;
+    return filter(pid);
 }
 
 char LICENSE[] SEC("license") = "GPL";
