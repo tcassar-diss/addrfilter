@@ -23,7 +23,7 @@ func main() {
 	defer l.Sync()
 
 	cfg := bpf.FilterCfg{
-		Action: bpf.Warn,
+		Action: bpf.KillAll,
 	}
 
 	filter, err := bpf.LoadFilter(logger, &cfg)
@@ -58,7 +58,7 @@ func main() {
 				func() []uint {
 					w := make([]uint, 461)
 					for i := 0; i < 461; i++ {
-						w[i] = uint(0) // allow all for dev purposes
+						w[i] = uint(0) // allow none for dev purposes
 					}
 
 					return w
