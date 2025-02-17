@@ -26,20 +26,22 @@ const (
 	addrfilterStatTypeTP_ENTERED          addrfilterStatType = 1
 	addrfilterStatTypeIGNORE_PID          addrfilterStatType = 2
 	addrfilterStatTypePID_READ_FAILED     addrfilterStatType = 3
-	addrfilterStatTypeLIBC_NOT_LOADED     addrfilterStatType = 4
-	addrfilterStatTypeSTK_DBG_EMPTY       addrfilterStatType = 5
-	addrfilterStatTypeGET_STACK_FAILED    addrfilterStatType = 6
-	addrfilterStatTypeCALLSITE_LIBC       addrfilterStatType = 7
-	addrfilterStatTypeSTACK_TOO_SHORT     addrfilterStatType = 8
-	addrfilterStatTypeNO_RP_MAPPING       addrfilterStatType = 9
-	addrfilterStatTypeRP_NULL_AFTER_MAP   addrfilterStatType = 10
-	addrfilterStatTypeFILENAME_TOO_LONG   addrfilterStatType = 11
-	addrfilterStatTypeFIND_VMA_FAILED     addrfilterStatType = 12
-	addrfilterStatTypeNO_VMA_BACKING_FILE addrfilterStatType = 13
-	addrfilterStatTypeWHITELIST_MISSING   addrfilterStatType = 14
-	addrfilterStatTypeSYSCALL_BLOCKED     addrfilterStatType = 15
-	addrfilterStatTypeSEND_SIGNAL_FAILED  addrfilterStatType = 16
-	addrfilterStatTypeSTAT_END            addrfilterStatType = 17
+	addrfilterStatTypePPID_READ_FAILED    addrfilterStatType = 4
+	addrfilterStatTypeFOLLOW_FORK_FAILED  addrfilterStatType = 5
+	addrfilterStatTypeLIBC_NOT_LOADED     addrfilterStatType = 6
+	addrfilterStatTypeSTK_DBG_EMPTY       addrfilterStatType = 7
+	addrfilterStatTypeGET_STACK_FAILED    addrfilterStatType = 8
+	addrfilterStatTypeCALLSITE_LIBC       addrfilterStatType = 9
+	addrfilterStatTypeSTACK_TOO_SHORT     addrfilterStatType = 10
+	addrfilterStatTypeNO_RP_MAPPING       addrfilterStatType = 11
+	addrfilterStatTypeRP_NULL_AFTER_MAP   addrfilterStatType = 12
+	addrfilterStatTypeFILENAME_TOO_LONG   addrfilterStatType = 13
+	addrfilterStatTypeFIND_VMA_FAILED     addrfilterStatType = 14
+	addrfilterStatTypeNO_VMA_BACKING_FILE addrfilterStatType = 15
+	addrfilterStatTypeWHITELIST_MISSING   addrfilterStatType = 16
+	addrfilterStatTypeSYSCALL_BLOCKED     addrfilterStatType = 17
+	addrfilterStatTypeSEND_SIGNAL_FAILED  addrfilterStatType = 18
+	addrfilterStatTypeSTAT_END            addrfilterStatType = 19
 )
 
 type addrfilterSyscallWhitelist struct{ Bitmap [58]uint8 }

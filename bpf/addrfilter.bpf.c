@@ -27,6 +27,8 @@ enum stat_type {
     TP_ENTERED,  /* every time syscall is entered */
     IGNORE_PID,  /* don't filter, PID isn't being traced */
     PID_READ_FAILED,  /* failed to read PID from current task */
+    PPID_READ_FAILED,  /* failed to read PPID from current task */
+    FOLLOW_FORK_FAILED, /* failed to add a new element to protect_map */
     LIBC_NOT_LOADED,  /* Libc address space not loaded for current PID */
     STK_DBG_EMPTY,
     GET_STACK_FAILED,  /* bpf_get_stack helper returned a non-0 error */
@@ -337,6 +339,47 @@ static inline int assign_filename(struct task_struct* task, u64 rp, struct memor
 }
 
 
+/* apply_filter decided whether to apply the filtering mechanism to a given pid.
+*  apply_filter also handles fork following:
+*   if a pid is not in the follow map but the parent is, trace_pid will
+*   apply the filter to the process. It will also add pid to the follow map
+*   such that fork following will apply to forks of forks of ... of forks.
+*
+* in the case where an operation fails (such as a PID_READ_FAILED),
+* then no filter is applied and the error is logged.
+*/
+static inline bool apply_filter(struct task_struct *task, pid_t pid) {
+    pid_t ppid;
+
+    if (bpf_probe_read(&ppid, sizeof(ppid), &task->parent->tgid) != 0) {
+        record_stat(PPID_READ_FAILED);
+        return false;
+    }
+
+    bool *parent_traced = (bool *)bpf_map_lookup_elem(&protect_map, &ppid);
+    if (parent_traced) {
+        bool tr = 1;
+
+        #if DEBUG
+            static char fmt[] = "adding PID %d to protect_map";
+            bpf_trace_printk(fmt, sizeof(fmt), pid);
+        #endif
+
+        if (bpf_map_update_elem(&protect_map, &ppid, &tr, 0) == 0) {
+            record_stat(FOLLOW_FORK_FAILED);
+        };
+        return true;
+    }
+
+    bool *protect = (bool *)bpf_map_lookup_elem(&protect_map, &pid);
+    if (!protect) {
+        return false;
+    }
+
+    return true;
+}
+
+
 SEC("raw_tp/sys_enter")
 int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
     record_stat(TP_ENTERED);
@@ -355,13 +398,10 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
 
     if (bpf_probe_read(&pid, sizeof(pid), &task->tgid) != 0) {
         record_stat(PID_READ_FAILED);
-        return 1;
+        return false;
     }
 
-    // todo: check if ppid in follow
-    // if so, add pid to follow and continue.
-    bool *protect = (bool *)bpf_map_lookup_elem(&protect_map, &pid);
-    if (!protect) {
+    if (!apply_filter(task, pid)) {
         record_stat(IGNORE_PID);
         return 0;
     }
@@ -383,9 +423,8 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
 
     struct syscall_whitelist *whitelist;
     whitelist = (struct syscall_whitelist *)bpf_map_lookup_elem(&path_whitelist_map, &mem_filename.d_iname);
-    if (!whitelist) {
-        /* decide how to handle missing whitelist: probably default to "" whitelist: need to make sure that it always exists in userspace though */
 
+    if (!whitelist) {
         record_stat(WHITELIST_MISSING);
         return 0;
     }

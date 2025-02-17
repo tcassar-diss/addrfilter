@@ -22,6 +22,8 @@ type Stats struct {
 	TPEntered            uint64
 	IgnorePID            uint64
 	ReadPIDFailed        uint64
+	ReadPPIDFailed       uint64
+	FollowForkFailed     uint64
 	LibcNotLoaded        uint64
 	StackDebugEmpty      uint64
 	GetStackFailed       uint64
@@ -159,6 +161,8 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 		addrfilterStatTypeTP_ENTERED,
 		addrfilterStatTypeIGNORE_PID,
 		addrfilterStatTypePID_READ_FAILED,
+		addrfilterStatTypePPID_READ_FAILED,
+		addrfilterStatTypeFOLLOW_FORK_FAILED,
 		addrfilterStatTypeLIBC_NOT_LOADED,
 		addrfilterStatTypeSTK_DBG_EMPTY,
 		addrfilterStatTypeGET_STACK_FAILED,
@@ -185,6 +189,8 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 		TPEntered:            stats[addrfilterStatTypeTP_ENTERED],
 		IgnorePID:            stats[addrfilterStatTypeIGNORE_PID],
 		ReadPIDFailed:        stats[addrfilterStatTypePID_READ_FAILED],
+		ReadPPIDFailed:       stats[addrfilterStatTypePPID_READ_FAILED],
+		FollowForkFailed:     stats[addrfilterStatTypeFOLLOW_FORK_FAILED],
 		LibcNotLoaded:        stats[addrfilterStatTypeLIBC_NOT_LOADED],
 		StackDebugEmpty:      stats[addrfilterStatTypeSTK_DBG_EMPTY],
 		GetStackFailed:       stats[addrfilterStatTypeGET_STACK_FAILED],

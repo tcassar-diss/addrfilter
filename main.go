@@ -53,7 +53,14 @@ func main() {
 		Whitelists: []*bpf.Whitelist{
 			{
 				"print",
-				[]uint{0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13},
+				func() []uint {
+					w := make([]uint, 461)
+					for i := 0; i < 461; i++ {
+						w[i] = uint(i)
+					}
+
+					return w
+				}(),
 			},
 		},
 		Cfg: nil,
