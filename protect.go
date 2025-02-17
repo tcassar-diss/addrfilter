@@ -24,7 +24,7 @@ type ProtectCfg struct {
 // ProtectJob specifies which program to protect, and how to do so.
 type ProtectJob struct {
 	PID        int32
-	Whitelists []bpf.Whitelist
+	Whitelists []*bpf.Whitelist
 	Cfg        *ProtectCfg
 }
 
@@ -43,10 +43,8 @@ func (j *ProtectJob) Register(filter *bpf.Filter) error {
 		return fmt.Errorf("failed to register libc address space with BPF: %w", err)
 	}
 
-	for range j.Whitelists {
-		//if err := filter.RegisterWhitelist(&w); err != nil {
-		//	return fmt.Errorf("failed to register whitelist: %w", err)
-		//}
+	if err := filter.RegisterWhitelists(j.Whitelists); err != nil {
+		return fmt.Errorf("failed to register whitelists: %w", err)
 	}
 
 	if err := filter.ProtectPID(j.PID); err != nil {

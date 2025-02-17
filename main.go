@@ -50,10 +50,10 @@ func main() {
 
 	job := ProtectJob{
 		PID: pid,
-		Whitelists: []bpf.Whitelist{
+		Whitelists: []*bpf.Whitelist{
 			{
 				"print",
-				[]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13},
+				[]uint{0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13},
 			},
 		},
 		Cfg: nil,

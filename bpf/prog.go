@@ -230,15 +230,39 @@ func (f *Filter) ReadStacktraceMap() (*Stacktrace, error) {
 	}, nil
 }
 
-// RegisterWhitelist writes a Whitelist to BPF.
+func (f *Filter) RegisterWhitelists(whitelist []*Whitelist) error {
+	for _, w := range whitelist {
+		if err := f.RegisterWhitelist(w); err != nil {
+			return fmt.Errorf("failed to register whitelist: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// RegisterWhitelist writes a Whitelist to kernel space.
 func (f *Filter) RegisterWhitelist(whitelist *Whitelist) error {
 	var w addrfilterSyscallWhitelist
 
-	err := f.objects.PathWhitelistMap.Lookup(&whitelist.Filename, &w)
+	name, err := whitelist.MarshalFilename()
+	if err != nil {
+		return fmt.Errorf("failed to marshal filename to byte array: %w", err)
+	}
+
+	err = f.objects.PathWhitelistMap.Lookup(&name, &w)
 	if err != nil {
 		if w.Bitmap != [58]uint8{} {
 			return fmt.Errorf("%w: non-zerod bitmap already exists", ErrWhitelistAlreadyExists)
 		}
+	}
+
+	bitmap, err := whitelist.AsBitmap()
+	if err != nil {
+		return fmt.Errorf("failed to generate bitmap: %w", err)
+	}
+
+	if err := f.objects.PathWhitelistMap.Put(&name, &bitmap); err != nil {
+		return fmt.Errorf("failed to write whitelist to kernel space: %w", err)
 	}
 
 	return nil

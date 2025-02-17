@@ -20,7 +20,7 @@
 #define MAX_SYSCALL_NUMBER 461
 #define WHITELIST_LEN 58  /* ceil(461 / 8): bitmap for whitelist */
 
-#define DEBUG 0
+#define DEBUG 1
 
 enum stat_type {
     GET_CUR_TASK_FAILED, /* when the bpf helper get_current_task fails */
@@ -124,7 +124,15 @@ struct syscall_whitelist {
 struct syscall_whitelist *unused_syscall_whitelist __attribute__((unused));
 
 /* check_whitelist_field returns the 1 iff a syscall is allowed */
-static __always_inline bool check_whitelist_field(struct syscall_whitelist *entry, int field_index) {
+static inline bool check_whitelist_field(struct syscall_whitelist *entry, u64 field_index) {
+    if (field_index / 8 > 8) {
+        return -1;
+    }
+
+    if (field_index % 8 > 8 || field_index % 8 < 0) {
+        return -1;
+    }
+
     return (entry->bitmap[field_index / 8] & (1 << (field_index % 8))) != 0;
 }
 
@@ -168,7 +176,7 @@ struct {
 
     every return statement should be preceeded by a call to record_stat.
 */
-__always_inline void record_stat(enum stat_type stat) {
+static inline void record_stat(enum stat_type stat) {
     u64 *s_count =bpf_map_lookup_elem(&stats_map, &stat);
     if (!s_count) {
         return;
@@ -177,7 +185,7 @@ __always_inline void record_stat(enum stat_type stat) {
     __sync_fetch_and_add(s_count, 1);
 }
 
-/* strcmp is a helper which safely compares two strings */
+/* strcmp is a helper which safely compares two strings  for equality */
 int strcmp(const char *cs, const char *ct) {
     unsigned char c1, c2;
 
@@ -208,7 +216,7 @@ int strcmp(const char *cs, const char *ct) {
          0 on success,
         -1 on exit.
 */
-__always_inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx, u64* rp, pid_t pid) {
+static inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx, u64* rp, pid_t pid) {
     const int32 zero = 0;
     struct vm_range *libc_range = (struct vm_range *)bpf_map_lookup_elem(&libc_range_map, &zero);
     if (!libc_range) {
@@ -250,8 +258,8 @@ __always_inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx, u64* 
         r->frames_walked++;
     }
 
-    rp = &r->callsite;
-    if (*rp == 0) {
+    *rp = r->callsite;
+    if (rp == 0) {
         record_stat(CALLSITE_LIBC);
     }
 
@@ -308,8 +316,8 @@ static long get_dname(struct task_struct *task, struct vm_area_struct *vma, stru
     return 0;
 }
 
-__always_inline int assign_filename(struct task_struct* task, u64 rp, struct memory_filename *mem_filename) {
-    int res = bpf_find_vma(task, rp, get_dname, &mem_filename, 0);
+static inline int assign_filename(struct task_struct* task, u64 rp, struct memory_filename *mem_filename) {
+    int res = bpf_find_vma(task, rp, get_dname, mem_filename, 0);
     if  (res == -2) {
         // will not happen under normal operation, so log message is okay performance-wise.
         static const char fmt[] = "failed to map %d to a range in memory map: are libc ranges correct? %d";
@@ -322,7 +330,7 @@ __always_inline int assign_filename(struct task_struct* task, u64 rp, struct mem
 
     #if DEBUG
     static const char fmt[] = "assigned %d to %s";
-    bpf_trace_printk(fmt, sizeof(fmt), mem_filename->d_iname, rp);
+    bpf_trace_printk(fmt, sizeof(fmt), rp, mem_filename->d_iname);
     #endif /* DEBUG */
 
     return 0;
@@ -333,10 +341,11 @@ SEC("raw_tp/sys_enter")
 int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
     record_stat(TP_ENTERED);
 
-    u64* rp;
+    u64 rp = 0;
     pid_t pid;
 
     struct task_struct *task;
+    u64 syscall_nr = ctx->args[1];
 
     task = bpf_get_current_task_btf();
     if (!task) {
@@ -357,24 +366,16 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
         return 0;
     }
 
-    static const char fmt[] = "protecting!";
-    bpf_trace_printk(fmt, sizeof(fmt));
-
-    if (find_syscall_site(ctx, rp, pid) != 0){
-        return -1;
-    }
-
-    if (!rp) {
-        record_stat(RP_NULL_AFTER_MAP);
+    if (find_syscall_site(ctx, &rp, pid)!= 0){
         return -1;
     }
 
     struct memory_filename mem_filename = {};
-    if (assign_filename(task, *rp, &mem_filename) != 0) {
+    if (assign_filename(task, rp, &mem_filename) != 0) {
         return -1;
     }
 
-    if (strcmp(mem_filename.d_iname, "") != 0) {
+    if (strcmp(mem_filename.d_iname, "") == 0) {
         record_stat(NO_VMA_BACKING_FILE);
         // todo: decide if a default whitelist makes sense? (e.g. union of all syscalls from other address spaces?)
         return 0;
@@ -384,12 +385,12 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
     whitelist = (struct syscall_whitelist *)bpf_map_lookup_elem(&path_whitelist_map, &mem_filename.d_iname);
     if (!whitelist) {
         /* decide how to handle missing whitelist: probably default to "" whitelist: need to make sure that it always exists in userspace though */
+
         record_stat(WHITELIST_MISSING);
         return 0;
     }
 
-    /* allow if whitelist field is 1 */
-    if (check_whitelist_field(whitelist, ctx->args[1]) == 1) {
+    if (check_whitelist_field(whitelist, syscall_nr) == 1) {
         return 0;
     }
 
