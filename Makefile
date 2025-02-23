@@ -1,6 +1,6 @@
 all: ./bpf/gen.go main.go
 	go generate ./bpf
-	go build -o bin/addrspace .
+	go build -o bin/addrfilter .
 
 sample: main.c
 	gcc -o bin/print main.c
