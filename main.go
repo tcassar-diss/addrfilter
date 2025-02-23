@@ -54,10 +54,10 @@ func main() {
 		PID: pid,
 		Whitelists: []*bpf.Whitelist{
 			{
-				"print",
-				func() []uint {
+				Filename: "print",
+				Syscalls: func() []uint {
 					w := make([]uint, 461)
-					for i := 0; i < 461; i++ {
+					for i := range 461 {
 						w[i] = uint(0) // allow none for dev purposes
 					}
 

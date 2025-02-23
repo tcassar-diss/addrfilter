@@ -1,6 +1,13 @@
 package bpf
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+	"maps"
+	"path"
+)
+
+const FailedSyscallMapping = "FAILED"
 
 // Whitelist associates a filename with a set of allowed syscall numbers
 type Whitelist struct {
@@ -42,4 +49,69 @@ func (w *Whitelist) MarshalFilename() ([256]byte, error) {
 	bts[i] = 0x00
 
 	return bts, nil
+}
+
+// ParseSysoWhitelists will parse a `syso`-generated `counts.json` file and convert
+// it into whitelists which can be loaded into the kernel for filtering purposes.
+//
+// The `syso` format is JSON of the form
+//
+//	{
+//	  "LIBRARY PATH": {
+//	    "SYSCALL NUMBER": [syscall count],
+//	    ...
+//	  },
+//	}
+//
+// This parse function expects syscall counts as that is the format that `syso` generates by default.
+// By expecting these counts, though superfluous, intgration with `syso` is easier.
+func ParseSysoWhitelists(sysoWhitelists []byte) ([]*Whitelist, error) {
+	var whitelistWCounts map[string]map[uint]int
+
+	if err := json.Unmarshal(sysoWhitelists, &whitelistWCounts); err != nil {
+		return nil, fmt.Errorf("unmarshaling failed: %w", err)
+	}
+
+	whitelists := make([]*Whitelist, 0)
+
+	// todo: if name is FAILED then allow syscalls in all whitelists.
+
+	for libPath, syscallCounts := range whitelistWCounts {
+		file := path.Base(libPath)
+		syscalls := maps.Keys(syscallCounts)
+
+		if file == FailedSyscallMapping {
+			continue
+		}
+
+		whitelist := Whitelist{Filename: file}
+
+		fmt.Printf("%s: ", file)
+
+		for s := range syscalls {
+			fmt.Printf("%d, ", s)
+			whitelist.Syscalls = append(whitelist.Syscalls, s)
+		}
+
+		fmt.Println()
+
+		whitelists = append(whitelists, &whitelist)
+	}
+
+	// if any mappings failed, add them to every compartments whitelist.
+	// todo: rewrite syso with synchronous finding of address space.
+
+	failedSyscalls, ok := whitelistWCounts[FailedSyscallMapping]
+
+	if !ok {
+		return whitelists, nil
+	}
+
+	for s := range maps.Keys(failedSyscalls) {
+		for _, w := range whitelists {
+			w.Syscalls = append(w.Syscalls, s)
+		}
+	}
+
+	return whitelists, nil
 }
