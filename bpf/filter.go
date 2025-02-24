@@ -6,11 +6,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/cilium/ebpf/ringbuf"
 	"io"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/cilium/ebpf/ringbuf"
 
 	"github.com/cilium/ebpf/link"
 	"go.uber.org/zap"
@@ -64,6 +65,20 @@ var (
 	// Warn will simply warn userspace when a disallowed syscall happens - nothing is killed.
 	Warn WarnMode = "warn"
 )
+
+func StrToWarnMode(s string) (WarnMode, error) {
+	switch s {
+	case string(KillPID):
+		return KillPID, nil
+	case string(KillAll):
+		return KillAll, nil
+	case string(Warn):
+		return Warn, nil
+	default:
+	}
+
+	return "", fmt.Errorf("%w: unrecognised warn mode", ErrCfgInvalid)
+}
 
 type FilterCfg struct {
 	Action WarnMode
