@@ -48,7 +48,6 @@ enum stat_type {
 
 #define N_STAT_TYPES STAT_END
 
-
 enum config_type {
     KILL_MODE,
     CFG_END,

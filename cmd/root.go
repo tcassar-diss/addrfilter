@@ -4,7 +4,32 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/tcassar-diss/addrfilter/bpf"
 )
+
+var (
+	warnFlag    bool
+	killAllFlag bool
+)
+
+// ApplyFlags is a helper function to add flags to subcommands.
+func applyFlags(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&warnFlag, "warn", false, "Set action to Warn")
+	cmd.Flags().BoolVar(&killAllFlag, "killall", false, "Set action to KillAll")
+}
+
+// ResolveAction determines which action to take
+func getWarnmode() bpf.WarnMode {
+	if killAllFlag {
+		return bpf.KillAll
+	}
+
+	if warnFlag {
+		return bpf.Warn
+	}
+
+	return bpf.KillPID
+}
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -25,14 +50,4 @@ func Execute() {
 	}
 }
 
-func init() {
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
-
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.addrfilter.yaml)")
-
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-
-}
+func init() {}
