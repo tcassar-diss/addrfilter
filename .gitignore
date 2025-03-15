@@ -3,3 +3,6 @@ main.c
 .idea
 bin
 *.json
+mins
+**/venv
+**/.ipynb_checkpoints
