@@ -1,0 +1,37 @@
+Statistics for each stage:
+
+Stage: get-pid
+Mean: 323.36 ns
+Median: 332.00 ns
+Standard Deviation: 149.91 ns
+SEM: 24.98 ns
+
+Stage: apply-filter
+Mean: 973.92 ns
+Median: 724.50 ns
+Standard Deviation: 706.95 ns
+SEM: 117.82 ns
+
+Stage: find-syscall-site
+Mean: 3594.19 ns
+Median: 3846.00 ns
+Standard Deviation: 1158.28 ns
+SEM: 193.05 ns
+
+Stage: assign-filename
+Mean: 0.00 ns
+Median: 0.00 ns
+Standard Deviation: 0.00 ns
+SEM: 0.00 ns
+
+Stage: assoc-whitelist
+Mean: 0.00 ns
+Median: 0.00 ns
+Standard Deviation: 0.00 ns
+SEM: 0.00 ns
+
+Stage: perform-filtering
+Mean: 0.00 ns
+Median: 0.00 ns
+Standard Deviation: 0.00 ns
+SEM: 0.00 ns
