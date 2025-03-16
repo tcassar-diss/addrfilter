@@ -6,3 +6,5 @@ bin
 mins
 **/venv
 **/.ipynb_checkpoints
+examples/
+

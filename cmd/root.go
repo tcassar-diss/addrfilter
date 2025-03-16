@@ -10,15 +10,25 @@ import (
 var (
 	warnFlag    bool
 	killAllFlag bool
+	profileFlag bool
 )
 
-// ApplyFlags is a helper function to add flags to subcommands.
+// applyFlags is a helper function to add flags to subcommands.
 func applyFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&warnFlag, "warn", false, "Set action to Warn")
 	cmd.Flags().BoolVar(&killAllFlag, "killall", false, "Set action to KillAll")
+	cmd.Flags().BoolVar(&profileFlag,
+		"profile",
+		false,
+		"Generate profile report (requires building with profile info)",
+	)
 }
 
-// ResolveAction determines which action to take
+func getProfile() bool {
+	return profileFlag
+}
+
+// getWarnmode determines which action to take
 func getWarnmode() bpf.WarnMode {
 	if killAllFlag {
 		return bpf.KillAll

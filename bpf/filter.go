@@ -1,6 +1,7 @@
 package bpf
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -28,6 +29,7 @@ var (
 type Stats struct {
 	GetCurrentTaskFailed uint64
 	TPEntered            uint64
+	GetProfilerFailed    uint64
 	IgnorePID            uint64
 	ReadPIDFailed        uint64
 	ReadPPIDFailed       uint64
@@ -81,7 +83,8 @@ func StrToWarnMode(s string) (WarnMode, error) {
 }
 
 type FilterCfg struct {
-	Action WarnMode
+	Action  WarnMode
+	Profile bool
 }
 
 // Filter is the userspace counterpart to the `addrfilter` bpf program.
@@ -94,12 +97,16 @@ type Filter struct {
 	logger     *zap.SugaredLogger
 	objects    *addrfilterObjects
 	tracepoint *link.Link
+	profiler   *Profiler
 }
 
 // LoadFilter will load the addrfilter bpf program. If cfg==nil, Filter defaults to killing just the "malicious" PID.
 func LoadFilter(logger *zap.SugaredLogger, cfg *FilterCfg) (*Filter, error) {
 	if cfg == nil {
-		cfg = &FilterCfg{Action: KillPID}
+		cfg = &FilterCfg{
+			Action:  KillPID,
+			Profile: false,
+		}
 	}
 
 	p := &Filter{
@@ -108,8 +115,24 @@ func LoadFilter(logger *zap.SugaredLogger, cfg *FilterCfg) (*Filter, error) {
 		objects: &addrfilterObjects{},
 	}
 
-	if err := loadAddrfilterObjects(p.objects, nil); err != nil {
+	err := loadAddrfilterObjects(p.objects, nil)
+	if err != nil {
 		return nil, fmt.Errorf("failed to load addrfilter objects: %w", err)
+	}
+
+	if cfg.Profile {
+		f, err := os.Create("prof.csv")
+		if err != nil {
+			p.logger.Warnw("failed to create prof.csv, profiling to stdout", "err", err)
+			f = os.Stdout
+		}
+
+		bufOut := bufio.NewWriter(f)
+
+		p.profiler, err = NewProfiler(logger, p.objects.ProfileBuf, bufOut)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create profiler: %w", err)
+		}
 	}
 
 	return p, nil
@@ -124,7 +147,7 @@ func (f *Filter) Start(ctx context.Context) error {
 
 	tp, err := link.AttachRawTracepoint(link.RawTracepointOptions{
 		Name:    "sys_enter",
-		Program: f.objects.addrfilterPrograms.Addrfilter,
+		Program: f.objects.Addrfilter,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to attack to raw tracepoint: %w", err)
@@ -137,12 +160,18 @@ func (f *Filter) Start(ctx context.Context) error {
 		}
 	}()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		}
+	if f.profiler != nil {
+		go func() {
+			if err := f.profiler.Monitor(ctx); err != nil {
+				f.logger.Warnw("error listening for profiling information", "err", err)
+			}
+		}()
 	}
+
+	for range ctx.Done() {
+	}
+
+	return nil
 }
 
 // ProtectPID will add a PID to the filter list.
@@ -211,6 +240,7 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 	ss := []addrfilterStatType{
 		addrfilterStatTypeGET_CUR_TASK_FAILED,
 		addrfilterStatTypeTP_ENTERED,
+		addrfilterStatTypeGET_PROFILER_FAILED,
 		addrfilterStatTypeIGNORE_PID,
 		addrfilterStatTypePID_READ_FAILED,
 		addrfilterStatTypePPID_READ_FAILED,
@@ -240,6 +270,7 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 		GetCurrentTaskFailed: stats[addrfilterStatTypeGET_CUR_TASK_FAILED],
 		TPEntered:            stats[addrfilterStatTypeTP_ENTERED],
 		IgnorePID:            stats[addrfilterStatTypeIGNORE_PID],
+		GetProfilerFailed:    stats[addrfilterStatTypeGET_PROFILER_FAILED], // only relevant when profiling
 		ReadPIDFailed:        stats[addrfilterStatTypePID_READ_FAILED],
 		ReadPPIDFailed:       stats[addrfilterStatTypePPID_READ_FAILED],
 		FollowForkFailed:     stats[addrfilterStatTypeFOLLOW_FORK_FAILED],
@@ -437,7 +468,6 @@ func (f *Filter) Listen(ctx context.Context) error {
 			rd.Close()
 		case err := <-errChan:
 			f.logger.Warnw("error reading from warn buffer", "err", err)
-		default:
 		}
 	}
 }

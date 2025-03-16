@@ -74,8 +74,6 @@ func ParseSysoWhitelists(sysoWhitelists []byte) ([]*Whitelist, error) {
 
 	whitelists := make([]*Whitelist, 0)
 
-	// todo: if name is FAILED then allow syscalls in all whitelists.
-
 	for libPath, syscallCounts := range whitelistWCounts {
 		file := path.Base(libPath)
 		syscalls := maps.Keys(syscallCounts)
@@ -99,8 +97,6 @@ func ParseSysoWhitelists(sysoWhitelists []byte) ([]*Whitelist, error) {
 	}
 
 	// if any mappings failed, add them to every compartments whitelist.
-	// todo: rewrite syso with synchronous finding of address space.
-
 	failedSyscalls, ok := whitelistWCounts[FailedSyscallMapping]
 
 	if !ok {

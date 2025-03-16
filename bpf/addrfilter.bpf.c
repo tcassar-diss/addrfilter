@@ -5,6 +5,8 @@
 #include <bpf/bpf_tracing.h>
 #include <stdbool.h>
 
+#define PROFILE
+
 /* (Some) Numbers are all arbitrary. todo: make them meaningful */
 #define MAX_FOLLOW_ENTRIES                                                     \
   1024 /* maximum number of processes that addrfilter will protect */
@@ -26,6 +28,7 @@
 enum stat_type {
   GET_CUR_TASK_FAILED, /* when the bpf helper get_current_task fails */
   TP_ENTERED,          /* every time syscall is entered */
+  GET_PROFILER_FAILED,     /* ringbuf allocation for profiler failed */
   IGNORE_PID,          /* don't filter, PID isn't being traced */
   PID_READ_FAILED,     /* failed to read PID from current task */
   PPID_READ_FAILED,    /* failed to read PPID from current task */
@@ -79,6 +82,8 @@ struct vm_range {
   u64 end;
   char filename[MAX_FILENAME_LEN];
 };
+
+
 
 struct vm_range *unused_vm_range __attribute__((unused));
 enum stat_type *unused_stat_type __attribute__((unused));
@@ -138,7 +143,7 @@ struct {
 } warn_buf SEC(".maps");
 
 static inline int warn_pid(pid_t pid) {
-  pid_t *p = bpf_ringbuf_reserve(&warn_buf, sizeof(pid_t), 0);
+  pid_t *p = (pid_t *)bpf_ringbuf_reserve(&warn_buf, sizeof(pid_t), 0);
   if (!p) {
     record_stat(WARN_FAILED_RINGBUF_FULL);
     return -1;
@@ -150,6 +155,34 @@ static inline int warn_pid(pid_t pid) {
 
   return 0;
 }
+
+/* profile_info reports timing info for profiling
+ *
+ * only activated when the PROFILE macro is defined
+ * */
+typedef struct { 
+  __u64 start;             // time on entry
+  __u64 get_pid;           // time to get PID
+  __u64 apply_filter;      // time to determine whether PID should have
+                             //   syscalls filtered
+  __u64 find_syscall_site; // time to walk stack and find syscall site
+  __u64 assign_filename;   // time to assign filename to syscall site
+                             //   (e.g. walk vma rbtree)
+  __u64 assoc_whitelist;   // time to pull associated whitelist
+  __u64 end;               // time to perform the filtering
+} profile_info ;
+
+
+profile_info *unused_profile_info __attribute__((unused));
+
+/* profile_buf is used to profile the BPF code
+ *
+ * Timestamps are taken after each operation and this is reported to userspace
+ */
+struct {
+  __uint(type, BPF_MAP_TYPE_RINGBUF);
+  __uint(max_entries, 4096 * MAX_RINGBUF_ENTRIES);
+} profile_buf SEC(".maps");
 
 /*  protect_map contains PID(s) that the filter should be applied to.
 
@@ -471,8 +504,40 @@ static inline int filter(pid_t pid) {
   return 0;
 }
 
+#ifdef PROFILE
+  #define CALL_PROF_SUBMIT(p)                \
+  if (prof){                                  \
+    bpf_ringbuf_submit(p, 0); \
+  }
+  #define RECORD_TIMESTAMP(sec) if (prof) { \
+    prof->sec = bpf_ktime_get_ns();         \
+  }
+  #define CALL_PROF_DISCARD(p)             \
+  if (prof){                                  \
+    bpf_ringbuf_discard(p, BPF_RB_NO_WAKEUP); \
+  }
+#else
+  #define CALL_PROF_SUBMIT(p) 
+  #define RECORD_TIMESTAMP(sec) 
+#endif
+
+
 SEC("raw_tp/sys_enter")
 int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
+#ifdef PROFILE
+  profile_info *prof = (profile_info*)bpf_ringbuf_reserve(&profile_buf, sizeof(profile_info), 0);
+
+  if (!prof) {
+    record_stat(GET_PROFILER_FAILED);
+    static char no_spc[] = "failed to reserve space in profile ringbuf; nothing written";
+    /* bpf_trace_printk(no_spc, sizeof(no_spc)); */
+  }
+  
+  if (prof)
+    prof->start = bpf_ktime_get_ns();
+
+#endif
+
   record_stat(TP_ENTERED);
 
   u64 rp = 0;
@@ -484,27 +549,41 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
   task = bpf_get_current_task_btf();
   if (!task) {
     record_stat(GET_CUR_TASK_FAILED);
+    CALL_PROF_DISCARD(prof)
     return 1;
   }
 
+
   if (bpf_probe_read(&pid, sizeof(pid), &task->tgid) != 0) {
     record_stat(PID_READ_FAILED);
+    CALL_PROF_DISCARD(prof);
     return false;
   }
 
+  RECORD_TIMESTAMP(get_pid)
+  
   if (!apply_filter(task, pid)) {
     record_stat(IGNORE_PID);
+    CALL_PROF_DISCARD(prof);
     return 0;
   }
 
+  RECORD_TIMESTAMP(apply_filter)
+ 
   if (find_syscall_site(ctx, &rp, pid) != 0) {
+    CALL_PROF_SUBMIT(prof);
     return -1;
   }
 
+  RECORD_TIMESTAMP(find_syscall_site)
+
   struct memory_filename mem_filename = {};
   if (assign_filename(task, rp, &mem_filename) != 0) {
+    CALL_PROF_SUBMIT(prof);
     return -1;
   }
+
+  RECORD_TIMESTAMP(assign_filename)
 
   struct syscall_whitelist *whitelist;
   whitelist = (struct syscall_whitelist *)bpf_map_lookup_elem(
@@ -512,16 +591,32 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
 
   if (!whitelist) {
     record_stat(WHITELIST_MISSING);
+    CALL_PROF_SUBMIT(prof);
     return 0;
   }
 
+  RECORD_TIMESTAMP(assoc_whitelist)
+
   if (check_whitelist_field(whitelist, syscall_nr) == 1) {
+    CALL_PROF_SUBMIT(prof);
     return 0;
   }
 
   record_stat(SYSCALL_BLOCKED);
 
-  return filter(pid);
+  filter(pid);
+
+#ifdef PROFILE
+  if (prof) {
+    prof->end = bpf_ktime_get_ns();
+    bpf_ringbuf_submit(prof, 0);
+  } else {
+    static const char noprof[] = "no prof defined :(";
+    bpf_trace_printk(noprof, sizeof(noprof), prof->start);
+  }
+#endif
+
+  return 0;
 }
 
 char LICENSE[] SEC("license") = "GPL";

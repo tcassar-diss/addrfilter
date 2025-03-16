@@ -12,6 +12,7 @@ type params struct {
 	pid           int32
 	whitelistPath string
 	warnmode      bpf.WarnMode
+	profile       bool
 }
 
 func parseProtectParams(args []string) (*params, error) {
@@ -30,5 +31,6 @@ func parseProtectParams(args []string) (*params, error) {
 		pid:           pid,
 		whitelistPath: args[0],
 		warnmode:      getWarnmode(),
+		profile:       getProfile(),
 	}, nil
 }

@@ -16,6 +16,7 @@ type ProtectJob struct {
 	PID        int32
 	Whitelists []*bpf.Whitelist
 	filter     *bpf.Filter
+	profiler   *bpf.Profiler
 }
 
 func NewProtectJob(

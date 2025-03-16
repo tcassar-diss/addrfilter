@@ -34,7 +34,14 @@ where
 			logger.Fatalw("invalid arguments (addrfilter -h for help)", "err", err)
 		}
 
-		if err := frontend.Start(logger, params.pid, params.warnmode, args[0]); err != nil {
+		if err := frontend.Start(
+			logger,
+			params.pid,
+			args[0],
+			&frontend.StartCfg{
+				WarnMode: params.warnmode,
+				Profile:  params.profile,
+			}); err != nil {
 			logger.Fatalw("failed to protect", "pid", params.pid, "err", err)
 		}
 	},

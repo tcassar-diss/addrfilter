@@ -10,22 +10,31 @@ import (
 	"go.uber.org/zap"
 )
 
-func Start(logger *zap.SugaredLogger, pid int32, warnmode bpf.WarnMode, whitelistPath string) error {
+type StartCfg struct {
+	WarnMode bpf.WarnMode
+	Profile  bool
+}
+
+func Start(logger *zap.SugaredLogger, pid int32, whitelistPath string, cfg *StartCfg) error {
 	filter, err := bpf.LoadFilter(
 		logger,
 		&bpf.FilterCfg{
-			Action: warnmode,
+			Action:  cfg.WarnMode,
+			Profile: cfg.Profile,
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to load filter", "err", err)
+		return fmt.Errorf("failed to load filter: %w", err)
 	}
 
 	whitelists, err := buildWhitelists(whitelistPath)
+	if err != nil {
+		return fmt.Errorf("failed to build whitelists: %w", err)
+	}
 
 	job := NewProtectJob(logger, pid, whitelists, filter)
 
-	if err := job.Run(context.Background()); err != nil {
+	if err = job.Run(context.Background()); err != nil {
 		return fmt.Errorf("failed to run job: %w", err)
 	}
 
