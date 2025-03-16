@@ -7,4 +7,5 @@ mins
 **/venv
 **/.ipynb_checkpoints
 examples/
+out/
 
