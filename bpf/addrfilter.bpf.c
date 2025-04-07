@@ -1,6 +1,7 @@
 //go:build exclude
 
 #include "vmlinux.h"
+
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 #include <stdbool.h>
@@ -82,8 +83,6 @@ struct vm_range {
   u64 end;
   char filename[MAX_FILENAME_LEN];
 };
-
-
 
 struct vm_range *unused_vm_range __attribute__((unused));
 enum stat_type *unused_stat_type __attribute__((unused));
@@ -346,8 +345,7 @@ static inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx,
     r->frames_walked++;
   }
 
-  *rp = r->callsite;
-  if (rp == 0) {
+  if (r->callsite == 0) {
     record_stat(CALLSITE_LIBC);
   }
 

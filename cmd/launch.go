@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/tcassar-diss/addrfilter/frontend"
@@ -47,6 +48,8 @@ var startCmd = &cobra.Command{
 		if err := command.Start(); err != nil {
 			log.Fatalf("failed to launch %s%s: %v", args[1], fmt.Sprintf(" %s", args[2:]), err)
 		}
+
+		time.Sleep(1 * time.Second)
 
 		if err := frontend.Start(
 			logger,

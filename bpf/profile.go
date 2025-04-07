@@ -88,8 +88,6 @@ func (p *Profiler) listen(
 
 	for {
 		record, err := rd.Read()
-		p.logger.Info("profiler read a value")
-
 		if errors.Is(err, ringbuf.ErrClosed) {
 			p.logger.Info("profile ringbuf closed")
 			return
@@ -102,8 +100,6 @@ func (p *Profiler) listen(
 		if err := binary.Read(bytes.NewReader(record.RawSample), binary.LittleEndian, &sample); err != nil {
 			errChan <- fmt.Errorf("failed to read from ringbuf: %w", err)
 		}
-
-		p.logger.Infow("sample", "payload", fmt.Sprintf("%v", sample))
 
 		profChan <- sample
 	}

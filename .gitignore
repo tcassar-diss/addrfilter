@@ -8,4 +8,5 @@ mins
 **/.ipynb_checkpoints
 examples/
 out/
+benchmarks/
 
