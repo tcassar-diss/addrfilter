@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/tcassar-diss/addrfilter/frontend"
@@ -28,7 +27,7 @@ var startCmd = &cobra.Command{
 		/path/to/whitelist: syso-generated whitelist
 	`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// todo: ctrl-c -> cancel command context
+		// TODO: ctrl-c -> cancel command context
 		l, err := zap.NewProduction()
 		if err != nil {
 			log.Fatalf("failed to get zap production logger: %v\n", err)
@@ -48,8 +47,6 @@ var startCmd = &cobra.Command{
 		if err := command.Start(); err != nil {
 			log.Fatalf("failed to launch %s%s: %v", args[1], fmt.Sprintf(" %s", args[2:]), err)
 		}
-
-		time.Sleep(1 * time.Second)
 
 		if err := frontend.Start(
 			logger,

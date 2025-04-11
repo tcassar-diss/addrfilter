@@ -38,10 +38,6 @@ func NewProtectJob(
 func (p *ProtectJob) Run(ctx context.Context) error {
 	p.logger.Infow("starting protection", "pid", p.PID)
 
-	if err := p.filter.ProtectPID(p.PID); err != nil {
-		return fmt.Errorf("failed to protect PID: %w", err)
-	}
-
 	if err := p.register(); err != nil {
 		return fmt.Errorf("failed to register job with kernel: %w", err)
 	}

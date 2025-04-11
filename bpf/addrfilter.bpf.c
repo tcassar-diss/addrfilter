@@ -7,6 +7,11 @@
 #include <stdbool.h>
 
 #define PROFILE
+#define DEBUG
+
+#define ENOENT 2
+// XXX: defining ENOENT bad practice; but conflicts caused by
+// including <stdlib.h> which don't seem worth spending time to solve
 
 /* (Some) Numbers are all arbitrary. todo: make them meaningful */
 #define MAX_FOLLOW_ENTRIES                                                     \
@@ -24,12 +29,10 @@
 #define MAX_SYSCALL_NUMBER 461
 #define WHITELIST_LEN 58 /* ceil(461 / 8): bitmap for whitelist */
 
-#define DEBUG 0
-
 enum stat_type {
   GET_CUR_TASK_FAILED, /* when the bpf helper get_current_task fails */
   TP_ENTERED,          /* every time syscall is entered */
-  GET_PROFILER_FAILED,     /* ringbuf allocation for profiler failed */
+  GET_PROFILER_FAILED, /* ringbuf allocation for profiler failed */
   IGNORE_PID,          /* don't filter, PID isn't being traced */
   PID_READ_FAILED,     /* failed to read PID from current task */
   PPID_READ_FAILED,    /* failed to read PPID from current task */
@@ -159,18 +162,17 @@ static inline int warn_pid(pid_t pid) {
  *
  * only activated when the PROFILE macro is defined
  * */
-typedef struct { 
+typedef struct {
   __u64 start;             // time on entry
   __u64 get_pid;           // time to get PID
   __u64 apply_filter;      // time to determine whether PID should have
-                             //   syscalls filtered
+                           //   syscalls filtered
   __u64 find_syscall_site; // time to walk stack and find syscall site
   __u64 assign_filename;   // time to assign filename to syscall site
-                             //   (e.g. walk vma rbtree)
+                           //   (e.g. walk vma rbtree)
   __u64 assoc_whitelist;   // time to pull associated whitelist
   __u64 end;               // time to perform the filtering
-} profile_info ;
-
+} profile_info;
 
 profile_info *unused_profile_info __attribute__((unused));
 
@@ -349,10 +351,12 @@ static inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx,
     record_stat(CALLSITE_LIBC);
   }
 
-#if DEBUG
+#ifdef DEBUG
   static const char fmt2[] = "syscall site found @ 0x%lx";
   bpf_trace_printk(fmt2, sizeof(fmt2), r->callsite);
 #endif
+
+  *rp = r->callsite;
 
   return 0;
 }
@@ -407,19 +411,23 @@ static long get_dname(struct task_struct *task, struct vm_area_struct *vma,
 static inline int assign_filename(struct task_struct *task, u64 rp,
                                   struct memory_filename *mem_filename) {
   int res = bpf_find_vma(task, rp, get_dname, mem_filename, 0);
-  if (res == -2) {
-    // will not happen under normal operation, so log message is okay
-    // performance-wise.
+  if (res == -ENOENT) {
+    // can happen if task->mm is empty or if no range has the rp;
+    if (task->mm == NULL) {
+      static const char fmt[] = "memory area of task struct empty!";
+      bpf_trace_printk(fmt, sizeof(fmt));
+    }
+
     static const char fmt[] = "failed to map %d to a range in memory map: are "
-                              "libc ranges correct? %d";
-    bpf_trace_printk(fmt, sizeof(fmt), res, rp);
+                              "libc ranges (0x%xl - 0x%xl) correct? error -2";
+    bpf_trace_printk(fmt, sizeof(fmt), rp);
   }
   if (res != 0) {
     record_stat(FIND_VMA_FAILED);
     return -1;
   }
 
-#if DEBUG
+#ifdef DEBUG
   static const char fmt[] = "assigned %d to %s";
   bpf_trace_printk(fmt, sizeof(fmt), rp, mem_filename->d_iname);
 #endif /* DEBUG */
@@ -453,12 +461,12 @@ static inline bool apply_filter(struct task_struct *task, pid_t pid) {
   if (parent_traced) {
     bool tr = 1;
 
-#if DEBUG
+#ifdef DEBUG
     static char fmt[] = "adding PID %d to protect_map";
     bpf_trace_printk(fmt, sizeof(fmt), pid);
 #endif
 
-    if (bpf_map_update_elem(&protect_map, &ppid, &tr, 0) == 0) {
+    if (bpf_map_update_elem(&protect_map, &ppid, &tr, 0) != 0) {
       record_stat(FOLLOW_FORK_FAILED);
     };
     return true;
@@ -503,38 +511,52 @@ static inline int filter(pid_t pid) {
 }
 
 #ifdef PROFILE
-  #define CALL_PROF_SUBMIT(p)                \
-  if (prof){                                  \
-    bpf_ringbuf_submit(p, 0); \
+#define CALL_PROF_SUBMIT(p)                                                    \
+  if (prof) {                                                                  \
+    bpf_ringbuf_submit(p, 0);                                                  \
   }
-  #define RECORD_TIMESTAMP(sec) if (prof) { \
-    prof->sec = bpf_ktime_get_ns();         \
+#define RECORD_TIMESTAMP(sec)                                                  \
+  if (prof) {                                                                  \
+    prof->sec = bpf_ktime_get_ns();                                            \
   }
-  #define CALL_PROF_DISCARD(p)             \
-  if (prof){                                  \
-    bpf_ringbuf_discard(p, BPF_RB_NO_WAKEUP); \
+#define CALL_PROF_DISCARD(p)                                                   \
+  if (prof) {                                                                  \
+    bpf_ringbuf_discard(p, BPF_RB_NO_WAKEUP);                                  \
   }
 #else
-  #define CALL_PROF_SUBMIT(p) 
-  #define RECORD_TIMESTAMP(sec) 
+#define CALL_PROF_SUBMIT(p)
+#define RECORD_TIMESTAMP(sec)
+#define CALL_PROF_DISCARD(p)
 #endif
 
-
+/* addrfilter only allows whitelisted system calls to begin execution.
+ *
+ * addrfilter runs before the kernel begins to process each system call.
+ *
+ * We check to see if the syscall was issued by a filtered process;
+ * if so, we identify which area of the process's address space the
+ * the call was made from.
+ *
+ * We then compare the syscall number with that area's whitelist. If
+ * the syscall number isn't present, we kill the process/report the
+ * event to userspace (config dependant).
+ * */
 SEC("raw_tp/sys_enter")
 int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
 #ifdef PROFILE
-  profile_info *prof = (profile_info*)bpf_ringbuf_reserve(&profile_buf, sizeof(profile_info), 0);
+  profile_info *prof = (profile_info *)bpf_ringbuf_reserve(
+      &profile_buf, sizeof(profile_info), 0);
 
   if (!prof) {
     record_stat(GET_PROFILER_FAILED);
-    static char no_spc[] = "failed to reserve space in profile ringbuf; nothing written";
-    /* bpf_trace_printk(no_spc, sizeof(no_spc)); */
-  }
-  
-  if (prof)
-    prof->start = bpf_ktime_get_ns();
+    static char no_spc[] =
+        "failed to reserve space in profile ringbuf; nothing written";
 
+    return 1;
+  }
 #endif
+
+  RECORD_TIMESTAMP(start)
 
   record_stat(TP_ENTERED);
 
@@ -551,7 +573,6 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
     return 1;
   }
 
-
   if (bpf_probe_read(&pid, sizeof(pid), &task->tgid) != 0) {
     record_stat(PID_READ_FAILED);
     CALL_PROF_DISCARD(prof);
@@ -559,7 +580,7 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
   }
 
   RECORD_TIMESTAMP(get_pid)
-  
+
   if (!apply_filter(task, pid)) {
     record_stat(IGNORE_PID);
     CALL_PROF_DISCARD(prof);
@@ -567,7 +588,7 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
   }
 
   RECORD_TIMESTAMP(apply_filter)
- 
+
   if (find_syscall_site(ctx, &rp, pid) != 0) {
     CALL_PROF_SUBMIT(prof);
     return -1;
