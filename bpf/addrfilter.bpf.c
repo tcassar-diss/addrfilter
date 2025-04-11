@@ -6,8 +6,8 @@
 #include <bpf/bpf_tracing.h>
 #include <stdbool.h>
 
-#define PROFILE
-#define DEBUG
+/* #define PROFILE */
+/* #define DEBUG */
 
 #define ENOENT 2
 // XXX: defining ENOENT bad practice; but conflicts caused by
