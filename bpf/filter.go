@@ -139,7 +139,6 @@ func LoadFilter(logger *zap.SugaredLogger, cfg *FilterCfg) (*Filter, error) {
 }
 
 // Start attaches the addrfilter program to the raw_tp hook and blocks until the context is cancelled.
-// If it receives a
 func (f *Filter) Start(ctx context.Context) error {
 	if err := f.initMaps(); err != nil {
 		return fmt.Errorf("failed to initialise maps: %w", err)
@@ -463,9 +462,9 @@ func (f *Filter) Listen(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			rd.Close()
+			return nil
 		case <-stopper:
-			rd.Close()
+			return nil
 		case err := <-errChan:
 			f.logger.Warnw("error reading from warn buffer", "err", err)
 		}
