@@ -27,6 +27,6 @@
 ## Slow?
 
 - Depends. High rates of syscalls => more slowdown.
-  Worst seen in testing was a redis microbenchmark with 3B key size which saw a
-  40% reduction in throughput. More details in the
+- Worst seen in testing was a redis microbenchmark with 3B key size which saw a
+  40% reduction in throughput (avg 577,000 syscalls per second). More details in the
   [report](https://www.github.com/tcassar-diss/report)
