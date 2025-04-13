@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"path"
+	"path/filepath"
 )
 
 const FailedSyscallMapping = "FAILED"
@@ -110,4 +111,19 @@ func ParseSysoWhitelists(sysoWhitelists []byte) ([]*Whitelist, error) {
 	}
 
 	return whitelists, nil
+}
+
+func ParseMapWhitelists(whitelists map[string][]uint) []*Whitelist {
+	w := make([]*Whitelist, 0, len(whitelists))
+
+	for path, syscalls := range whitelists {
+		filename := filepath.Base(path)
+
+		w = append(w, &Whitelist{
+			Filename: filename,
+			Syscalls: syscalls,
+		})
+	}
+
+	return w
 }

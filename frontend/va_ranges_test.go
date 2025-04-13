@@ -18,7 +18,7 @@ func TestFindLibc(t *testing.T) {
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
 
-	var testVARoot = path.Join(cwd, "./test-resources/test_vas")
+	testVARoot := path.Join(cwd, "./test-resources/test_vas")
 
 	cases := []testcase{
 		{
@@ -43,9 +43,9 @@ func TestFindLibc(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.filepath, func(t *testing.T) {
-			gotVmRange, gotErr := FindLibc(c.filepath)
+			gotVMRange, gotErr := FindLibc(c.filepath)
 
-			require.Equal(t, c.vmRange, gotVmRange)
+			require.Equal(t, c.vmRange, gotVMRange)
 			if c.err != nil {
 				require.ErrorIs(t, gotErr, c.err)
 			}

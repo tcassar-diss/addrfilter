@@ -32,7 +32,7 @@ type Profiler struct {
 	outputDest  csv.Writer
 }
 
-func NewProfiler(logger *zap.SugaredLogger, profileMap *ebpf.Map, outputDest io.Writer) (*Profiler, error) {
+func newProfiler(logger *zap.SugaredLogger, profileMap *ebpf.Map, outputDest io.Writer) (*Profiler, error) {
 	csvWriter := csv.NewWriter(outputDest)
 
 	return &Profiler{
@@ -42,10 +42,10 @@ func NewProfiler(logger *zap.SugaredLogger, profileMap *ebpf.Map, outputDest io.
 	}, nil
 }
 
-// Monitor writes profiling information to the output dest as profiles come in.
+// monitor writes profiling information to the output dest as profiles come in.
 //
 // Calls to monitor are blocking
-func (p *Profiler) Monitor(ctx context.Context) error {
+func (p *Profiler) monitor(ctx context.Context) error {
 	profChan := make(chan addrfilterProfileInfo, 64)
 	errChan := make(chan error, 1)
 
