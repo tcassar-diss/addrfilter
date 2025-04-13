@@ -89,7 +89,7 @@ func NewFilter(
 
 // Start attaches the BPF filter program to the tracepoint, therefore
 // *activating* the filtering. After calling start, register PIDs you want to
-// protect with Filter.ProtectPID()
+// protect with Filter.ProtectPID(). Start is blocking!
 func (f *Filter) Start(ctx context.Context) error {
 	tp, err := link.AttachRawTracepoint(link.RawTracepointOptions{
 		Name:    "sys_enter",

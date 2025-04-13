@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -13,6 +14,11 @@ import (
 	"github.com/tcassar-diss/addrfilter/bpf"
 	"github.com/tcassar-diss/addrfilter/frontend"
 	"go.uber.org/zap"
+)
+
+const (
+	IsolatedUID = 1000
+	IsolatedGID = 1000
 )
 
 func initFilter(logger *zap.SugaredLogger) (*bpf.Filter, error) {
@@ -38,6 +44,20 @@ func initFilter(logger *zap.SugaredLogger) (*bpf.Filter, error) {
 	return filter, nil
 }
 
+func logStats(filter *bpf.Filter) {
+	stats, err := filter.ReadStatsMap()
+	if err != nil {
+		log.Fatalf("failed to read stats map: %v", err)
+	}
+
+	bts, err := json.Marshal(stats)
+	if err != nil {
+		log.Fatalf("failed to marshal stats: %v", err)
+	}
+
+	fmt.Println(string(bts))
+}
+
 func main() {
 	l, err := zap.NewProduction()
 	if err != nil {
@@ -59,10 +79,15 @@ func main() {
 	command := exec.CommandContext(ctx, os.Args[2], os.Args[3:]...)
 	command.Stdout = os.Stdout
 
+	// this script expects to be run as root to be able to mount BPF programs,
+	// etc. running the filtered program as root would be a bad idea.
+	//
+	// therefore, use namespaces to remove process privileges (sort of);
+	// TLDR is that now process can't mess with BPF!
 	command.SysProcAttr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{
-			Uid: 1, // TODO: replace with sensible UID
-			Gid: 1, // TODO: replace with desired GID
+			Uid: IsolatedUID,
+			Gid: IsolatedGID,
 		},
 	}
 
@@ -79,11 +104,11 @@ func main() {
 		log.Fatalf("failed to create filter: %v", err)
 	}
 
+	errChan := make(chan error, 1)
+	defer close(errChan)
+
 	go func() {
-		err = filter.Start(ctx)
-		if err != nil {
-			log.Fatalf("error when filtering: %v", err)
-		}
+		errChan <- filter.Start(ctx)
 	}()
 
 	if err = command.Start(); err != nil {
@@ -94,23 +119,28 @@ func main() {
 		log.Fatalf("failed to protect executable: %v", err)
 	}
 
-	if err = command.Wait(); err != nil {
-		if err.Error() != "signal: interrupt" {
-			log.Fatalf("failed waiting on the executable: %v", err)
+	err = command.Wait()
+	if err != nil {
+		var exitErr *exec.ExitError
+
+		if errors.As(err, &exitErr) {
+			ws := exitErr.Sys().(syscall.WaitStatus)
+
+			if ws.Signaled() && ws.Signal() == syscall.SIGINT {
+				logger.Warnw("command interrupted by SIGINT", "cmd", os.Args[2])
+			} else {
+				logger.Errorw("command exited with error", "exitCode", ws.ExitStatus(), "signal", ws.Signal(), "cmd", os.Args[2])
+			}
+		} else {
+			logger.Fatalw("failed waiting on executable", "err", err)
 		}
-
-		logger.Warnw("command killed by SIGINT", "cmd", os.Args[2])
 	}
 
-	stats, err := filter.ReadStatsMap()
-	if err != nil {
-		log.Fatalf("failed to read stats map: %v", err)
+	cancel()
+
+	if err = <-errChan; err != nil {
+		log.Fatalf("error encountered while filtering: %v", err)
 	}
 
-	bts, err := json.Marshal(stats)
-	if err != nil {
-		log.Fatalf("failed to marshal stats: %v", err)
-	}
-
-	fmt.Println(string(bts))
+	logStats(filter)
 }
