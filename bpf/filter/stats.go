@@ -14,26 +14,28 @@ var (
 )
 
 type Stats struct {
-	GetCurrentTaskFailed uint64
-	TPEntered            uint64
-	GetProfilerFailed    uint64
-	IgnorePID            uint64
-	ReadPIDFailed        uint64
-	ReadPPIDFailed       uint64
-	FollowForkFailed     uint64
-	LibcNotLoaded        uint64
-	StackDebugEmpty      uint64
-	GetStackFailed       uint64
-	CallsiteLibc         uint64
-	StackTooShort        uint64
-	NoRPMapping          uint64
-	RPNullAfterMap       uint64
-	FilenameTooLong      uint64
-	FindVMAFailed        uint64
-	NoBackingVMA         uint64
-	WhitelistMissing     uint64
-	SyscallBlocked       uint64
-	SendSignalFailed     uint64
+	GetCurrentTaskFailed  uint64
+	TPEntered             uint64
+	GetProfilerFailed     uint64
+	IgnorePID             uint64
+	ReadPIDFailed         uint64
+	ReadPPIDFailed        uint64
+	FollowForkFailed      uint64
+	LibcNotLoaded         uint64
+	StackDebugEmpty       uint64
+	GetStackFailed        uint64
+	CallsiteLibc          uint64
+	StackTooShort         uint64
+	NoRPMapping           uint64
+	RPNullAfterMap        uint64
+	FilenameTooLong       uint64
+	FindVMAFailed         uint64
+	NoBackingVMA          uint64
+	WhitelistMissing      uint64
+	SyscallBlocked        uint64
+	SendSignalFailed      uint64
+	KillmodeCfgMissing    uint64
+	WarnFailedRingbufFull uint64
 }
 
 type Stacktrace struct {

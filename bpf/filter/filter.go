@@ -34,8 +34,8 @@ func NewLibcRange(start, end uint64) *LibcRange {
 // filter.
 // Profiling information will be written to the profWriter (when it's not nil)
 type FilterCfg struct {
-	warnmode   WarnMode
-	profWriter io.Writer // profWriter can be nil where no profiling is wanted
+	WarnMode   WarnMode
+	ProfWriter io.Writer // profWriter can be nil where no profiling is wanted
 }
 
 // Filter is a golang interface to the filtering bpf program.
@@ -57,8 +57,8 @@ type Filter struct {
 // DefaultFilterCfg is the default config: killPID and no profiling
 func DefaultFilterCfg() *FilterCfg {
 	return &FilterCfg{
-		warnmode:   KillPID,
-		profWriter: nil,
+		WarnMode:   KillPID,
+		ProfWriter: nil,
 	}
 }
 
@@ -157,6 +157,8 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 		addrfilterStatTypeWHITELIST_MISSING,
 		addrfilterStatTypeSYSCALL_BLOCKED,
 		addrfilterStatTypeSEND_SIGNAL_FAILED,
+		addrfilterStatTypeKILLMODE_CFG_MISSING,
+		addrfilterStatTypeWARN_FAILED_RINGBUF_FULL,
 	}
 
 	for _, s := range ss {
@@ -166,26 +168,28 @@ func (f *Filter) ReadStatsMap() (*Stats, error) {
 	}
 
 	return &Stats{
-		GetCurrentTaskFailed: stats[addrfilterStatTypeGET_CUR_TASK_FAILED],
-		TPEntered:            stats[addrfilterStatTypeTP_ENTERED],
-		IgnorePID:            stats[addrfilterStatTypeIGNORE_PID],
-		GetProfilerFailed:    stats[addrfilterStatTypeGET_PROFILER_FAILED], // only relevant when profiling
-		ReadPIDFailed:        stats[addrfilterStatTypePID_READ_FAILED],
-		ReadPPIDFailed:       stats[addrfilterStatTypePPID_READ_FAILED],
-		FollowForkFailed:     stats[addrfilterStatTypeFOLLOW_FORK_FAILED],
-		LibcNotLoaded:        stats[addrfilterStatTypeLIBC_NOT_LOADED],
-		StackDebugEmpty:      stats[addrfilterStatTypeSTK_DBG_EMPTY],
-		GetStackFailed:       stats[addrfilterStatTypeGET_STACK_FAILED],
-		CallsiteLibc:         stats[addrfilterStatTypeCALLSITE_LIBC],
-		StackTooShort:        stats[addrfilterStatTypeSTACK_TOO_SHORT],
-		NoRPMapping:          stats[addrfilterStatTypeNO_RP_MAPPING],
-		RPNullAfterMap:       stats[addrfilterStatTypeRP_NULL_AFTER_MAP],
-		FilenameTooLong:      stats[addrfilterStatTypeFILENAME_TOO_LONG],
-		FindVMAFailed:        stats[addrfilterStatTypeFIND_VMA_FAILED],
-		NoBackingVMA:         stats[addrfilterStatTypeNO_VMA_BACKING_FILE],
-		WhitelistMissing:     stats[addrfilterStatTypeWHITELIST_MISSING],
-		SyscallBlocked:       stats[addrfilterStatTypeSYSCALL_BLOCKED],
-		SendSignalFailed:     stats[addrfilterStatTypeSEND_SIGNAL_FAILED],
+		GetCurrentTaskFailed:  stats[addrfilterStatTypeGET_CUR_TASK_FAILED],
+		TPEntered:             stats[addrfilterStatTypeTP_ENTERED],
+		IgnorePID:             stats[addrfilterStatTypeIGNORE_PID],
+		GetProfilerFailed:     stats[addrfilterStatTypeGET_PROFILER_FAILED], // only relevant when profiling
+		ReadPIDFailed:         stats[addrfilterStatTypePID_READ_FAILED],
+		ReadPPIDFailed:        stats[addrfilterStatTypePPID_READ_FAILED],
+		FollowForkFailed:      stats[addrfilterStatTypeFOLLOW_FORK_FAILED],
+		LibcNotLoaded:         stats[addrfilterStatTypeLIBC_NOT_LOADED],
+		StackDebugEmpty:       stats[addrfilterStatTypeSTK_DBG_EMPTY],
+		GetStackFailed:        stats[addrfilterStatTypeGET_STACK_FAILED],
+		CallsiteLibc:          stats[addrfilterStatTypeCALLSITE_LIBC],
+		StackTooShort:         stats[addrfilterStatTypeSTACK_TOO_SHORT],
+		NoRPMapping:           stats[addrfilterStatTypeNO_RP_MAPPING],
+		RPNullAfterMap:        stats[addrfilterStatTypeRP_NULL_AFTER_MAP],
+		FilenameTooLong:       stats[addrfilterStatTypeFILENAME_TOO_LONG],
+		FindVMAFailed:         stats[addrfilterStatTypeFIND_VMA_FAILED],
+		NoBackingVMA:          stats[addrfilterStatTypeNO_VMA_BACKING_FILE],
+		WhitelistMissing:      stats[addrfilterStatTypeWHITELIST_MISSING],
+		SyscallBlocked:        stats[addrfilterStatTypeSYSCALL_BLOCKED],
+		SendSignalFailed:      stats[addrfilterStatTypeSEND_SIGNAL_FAILED],
+		KillmodeCfgMissing:    stats[addrfilterStatTypeKILLMODE_CFG_MISSING],
+		WarnFailedRingbufFull: stats[addrfilterStatTypeWARN_FAILED_RINGBUF_FULL],
 	}, nil
 }
 
@@ -219,7 +223,7 @@ func (f *Filter) listen(ctx context.Context) any {
 				errChan <- fmt.Errorf("failed to unmarshall data from warning buffer")
 			}
 
-			switch f.cfg.warnmode {
+			switch f.cfg.WarnMode {
 			case Warn:
 				f.warn(pid, 0) // todo: add syscall number to warning
 			case KillAll:
@@ -253,7 +257,7 @@ func (f *Filter) init() error {
 		return fmt.Errorf("failed to load addrfilter objects: %w", err)
 	}
 
-	if f.cfg.profWriter != nil {
+	if f.cfg.ProfWriter != nil {
 		if err := f.initProf(); err != nil {
 			return fmt.Errorf("failed to initialise profiler: %w", err)
 		}
@@ -281,7 +285,7 @@ func (f *Filter) init() error {
 func (f *Filter) initProf() error {
 	var err error
 
-	f.profiler, err = newProfiler(f.logger, f.objects.ProfileBuf, f.cfg.profWriter)
+	f.profiler, err = newProfiler(f.logger, f.objects.ProfileBuf, f.cfg.ProfWriter)
 	if err != nil {
 		return fmt.Errorf("failed to create profiler: %w", err)
 	}
@@ -294,7 +298,7 @@ func (f *Filter) regKCfg() error {
 
 	var killmode int32
 
-	switch f.cfg.warnmode {
+	switch f.cfg.WarnMode {
 	case KillPID:
 		killmode = int32(addrfilterKillModeKILL_PID)
 	case KillAll:
@@ -302,8 +306,10 @@ func (f *Filter) regKCfg() error {
 	case Warn:
 		killmode = int32(addrfilterKillModeWARN)
 	default:
-		return fmt.Errorf("%w: %s unsupported", ErrCfgInvalid, f.cfg.warnmode)
+		return fmt.Errorf("%w: %s unsupported", ErrCfgInvalid, f.cfg.WarnMode)
 	}
+
+	f.logger.Infow("configuring bpf kill mode", "mode", killmode)
 
 	if err := f.objects.CfgMap.Put(&key, &killmode); err != nil {
 		return fmt.Errorf("failed to write config to config map: %w", err)

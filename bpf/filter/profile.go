@@ -46,6 +46,8 @@ func newProfiler(logger *zap.SugaredLogger, profileMap *ebpf.Map, outputDest io.
 //
 // Calls to monitor are blocking
 func (p *Profiler) monitor(ctx context.Context) error {
+	defer p.outputDest.Flush()
+
 	profChan := make(chan addrfilterProfileInfo, 64)
 	errChan := make(chan error, 1)
 
