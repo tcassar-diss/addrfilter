@@ -21,9 +21,10 @@ const (
 )
 
 type AddrfilterFlags struct {
-	Profile   bool // profile BPF
-	Verbose   bool // run frontend in verbose mode
-	SpawnRoot bool // spawn the filtered application as root (DEVELOPMENT ONLY)
+	Profile       bool // profile BPF
+	Verbose       bool // run frontend in verbose mode
+	SpawnRoot     bool // spawn the filtered application as root (DEVELOPMENT ONLY)
+	TomlWhitelist bool
 }
 
 type AddrfilterCfg struct {
@@ -34,15 +35,22 @@ type AddrfilterCfg struct {
 	Options       *AddrfilterFlags
 }
 
-func Run(ctx context.Context, logger *zap.SugaredLogger, cfg *AddrfilterCfg) error {
+func Run(cfg *AddrfilterCfg) error {
+	logger, err := initLogger()
+	if err != nil {
+		return fmt.Errorf("failed to get a logger: %w", err)
+	}
+
 	logger.Infoln("=== Launching addrfilter ===")
 	defer logger.Sync()
+
+	ctx := context.Background()
 
 	cmd := configureCommand(ctx, cfg)
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 
-	filter, err := initFilter(logger)
+	filter, err := initFilter(logger, cfg.Options.TomlWhitelist, cfg.WhitelistPath)
 	if err != nil {
 		return fmt.Errorf("failed to initialise filter: %w", err)
 	}
@@ -55,7 +63,7 @@ func Run(ctx context.Context, logger *zap.SugaredLogger, cfg *AddrfilterCfg) err
 	}()
 
 	if err = cmd.Start(); err != nil {
-		log.Fatalf("failed to launch %s%s: %v", os.Args[2], fmt.Sprintf(" %s", os.Args[3:]), err)
+		log.Fatalf("failed to launch %s%s: %v", cfg.ExecPath, fmt.Sprintf(" %s", cfg.ExecArgs), err)
 	}
 
 	if err = filter.ProtectPID(int32(cmd.Process.Pid)); err != nil {
@@ -70,12 +78,12 @@ func Run(ctx context.Context, logger *zap.SugaredLogger, cfg *AddrfilterCfg) err
 			ws := exitErr.Sys().(syscall.WaitStatus)
 
 			if ws.Signaled() && ws.Signal() == syscall.SIGINT {
-				logger.Warnw("command interrupted by SIGINT", "cmd", os.Args[2])
+				logger.Warnw("command interrupted by SIGINT", "cmd", cfg.ExecPath)
 			} else {
-				logger.Errorw("command exited with error", "exitCode", ws.ExitStatus(), "signal", ws.Signal(), "cmd", os.Args[2])
+				logger.Warnw("command exited with error", "exitCode", ws.ExitStatus(), "signal", ws.Signal(), "cmd", cfg.ExecPath)
 			}
 		} else {
-			logger.Fatalw("failed waiting on executable", "err", err)
+			return fmt.Errorf("failed waiting on executable: %w", err)
 		}
 	}
 
@@ -90,6 +98,15 @@ func Run(ctx context.Context, logger *zap.SugaredLogger, cfg *AddrfilterCfg) err
 	}
 
 	return nil
+}
+
+func initLogger() (*zap.SugaredLogger, error) {
+	l, err := zap.NewProduction()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get production zap logger: %w", err)
+	}
+
+	return l.Sugar(), nil
 }
 
 func configureCommand(ctx context.Context, cfg *AddrfilterCfg) *exec.Cmd {
@@ -116,7 +133,7 @@ func configureCommand(ctx context.Context, cfg *AddrfilterCfg) *exec.Cmd {
 	return cmd
 }
 
-func initFilter(logger *zap.SugaredLogger) (*bpf.Filter, error) {
+func initFilter(logger *zap.SugaredLogger, tomlWhitelist bool, whitelistPath string) (*bpf.Filter, error) {
 	// use this process's libc address range (spawned process will have the same
 	// range so may as well set up before the process starts)
 	libcRange, err := FindLibc(fmt.Sprintf("/proc/%d/maps", os.Getpid()))
@@ -124,7 +141,13 @@ func initFilter(logger *zap.SugaredLogger) (*bpf.Filter, error) {
 		return nil, fmt.Errorf("failed to get libc range for current process: %w", err)
 	}
 
-	parsedWLs, err := ParseSysoWhitelists(os.Args[1])
+	var parsedWLs *Whitelist
+
+	if !tomlWhitelist {
+		parsedWLs, err = ParseSysoWhitelists(whitelistPath)
+	} else {
+		parsedWLs, err = ParseTOMLWhitelists(whitelistPath)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse whitelists: %w", err)
 	}
