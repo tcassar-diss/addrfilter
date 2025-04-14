@@ -21,22 +21,26 @@ const (
 	IsolatedGID = 1000
 )
 
-type AddrfilterFlags struct {
+type CmdCfg struct {
+	ExecArgs  []string
+	ExecPath  string
+	SpawnRoot bool // spawn the filtered application as root (DEVELOPMENT ONLY)
+}
+
+type GlobalFlags struct {
 	Profile       bool // profile BPF
 	Verbose       bool // run frontend in verbose mode
-	SpawnRoot     bool // spawn the filtered application as root (DEVELOPMENT ONLY)
-	TomlWhitelist bool
+	SysoWhitelist bool
 }
 
 type AddrfilterCfg struct {
 	WhitelistPath string
-	ExecPath      string
-	ExecArgs      []string
 	WarnMode      *filter.WarnMode
-	Options       *AddrfilterFlags
+	Options       *GlobalFlags
+	CmdCfg        *CmdCfg
 }
 
-func Run(cfg *AddrfilterCfg) error {
+func RunAddrfilter(cfg *AddrfilterCfg) error {
 	logger, err := initLogger()
 	if err != nil {
 		return fmt.Errorf("failed to get a logger: %w", err)
@@ -47,7 +51,7 @@ func Run(cfg *AddrfilterCfg) error {
 
 	ctx := context.Background()
 
-	cmd := configureCommand(ctx, cfg)
+	cmd := configureCommand(ctx, cfg.CmdCfg)
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 
@@ -68,7 +72,7 @@ func Run(cfg *AddrfilterCfg) error {
 	}()
 
 	if err = cmd.Start(); err != nil {
-		log.Fatalf("failed to launch %s%s: %v", cfg.ExecPath, fmt.Sprintf(" %s", cfg.ExecArgs), err)
+		log.Fatalf("failed to launch %s%s: %v", cfg.CmdCfg.ExecPath, fmt.Sprintf(" %s", cfg.CmdCfg.ExecArgs), err)
 	}
 
 	if err = filter.ProtectPID(int32(cmd.Process.Pid)); err != nil {
@@ -83,9 +87,9 @@ func Run(cfg *AddrfilterCfg) error {
 			ws := exitErr.Sys().(syscall.WaitStatus)
 
 			if ws.Signaled() && ws.Signal() == syscall.SIGINT {
-				logger.Warnw("command interrupted by SIGINT", "cmd", cfg.ExecPath)
+				logger.Warnw("command interrupted by SIGINT", "cmd", cfg.CmdCfg.ExecPath)
 			} else {
-				logger.Warnw("command exited with error", "exitCode", ws.ExitStatus(), "signal", ws.Signal(), "cmd", cfg.ExecPath)
+				logger.Warnw("command exited with error", "exitCode", ws.ExitStatus(), "signal", ws.Signal(), "cmd", cfg.CmdCfg.ExecPath)
 			}
 		} else {
 			return fmt.Errorf("failed waiting on executable: %w", err)
@@ -114,7 +118,7 @@ func initLogger() (*zap.SugaredLogger, error) {
 	return l.Sugar(), nil
 }
 
-func configureCommand(ctx context.Context, cfg *AddrfilterCfg) *exec.Cmd {
+func configureCommand(ctx context.Context, cfg *CmdCfg) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, cfg.ExecPath, cfg.ExecArgs...)
 
 	cmd.Stdout = os.Stdout
@@ -126,7 +130,7 @@ func configureCommand(ctx context.Context, cfg *AddrfilterCfg) *exec.Cmd {
 	//
 	// therefore, use namespaces to remove process privileges (sort of);
 	// TLDR is that now process can't mess with BPF!
-	if !cfg.Options.SpawnRoot {
+	if !cfg.SpawnRoot {
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Credential: &syscall.Credential{
 				Uid: IsolatedUID,
@@ -148,10 +152,10 @@ func initFilter(logger *zap.SugaredLogger, cfg *AddrfilterCfg) (*filter.Filter, 
 
 	var parsedWLs *Whitelist
 
-	if cfg.Options.TomlWhitelist {
-		parsedWLs, err = ParseTOMLWhitelists(cfg.WhitelistPath)
-	} else {
+	if cfg.Options.SysoWhitelist {
 		parsedWLs, err = ParseSysoWhitelists(cfg.WhitelistPath)
+	} else {
+		parsedWLs, err = ParseTOMLWhitelists(cfg.WhitelistPath)
 	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse whitelists: %w", err)
@@ -165,7 +169,7 @@ func initFilter(logger *zap.SugaredLogger, cfg *AddrfilterCfg) (*filter.Filter, 
 	)
 
 	if cfg.Options.Profile {
-		f, err := os.Create(fmt.Sprintf("%s-prof.csv", cfg.ExecPath))
+		f, err := os.Create(fmt.Sprintf("%s-prof.csv", cfg.CmdCfg.ExecPath))
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create an output file for profiler data: %w", err)
 		}
