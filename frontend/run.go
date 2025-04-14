@@ -11,7 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/tcassar-diss/addrfilter/bpf"
+	"github.com/tcassar-diss/addrfilter/bpf/filter"
 	"go.uber.org/zap"
 )
 
@@ -31,7 +31,7 @@ type AddrfilterCfg struct {
 	WhitelistPath string
 	ExecPath      string
 	ExecArgs      []string
-	WarnMode      *bpf.WarnMode
+	WarnMode      *filter.WarnMode
 	Options       *AddrfilterFlags
 }
 
@@ -133,7 +133,7 @@ func configureCommand(ctx context.Context, cfg *AddrfilterCfg) *exec.Cmd {
 	return cmd
 }
 
-func initFilter(logger *zap.SugaredLogger, tomlWhitelist bool, whitelistPath string) (*bpf.Filter, error) {
+func initFilter(logger *zap.SugaredLogger, tomlWhitelist bool, whitelistPath string) (*filter.Filter, error) {
 	// use this process's libc address range (spawned process will have the same
 	// range so may as well set up before the process starts)
 	libcRange, err := FindLibc(fmt.Sprintf("/proc/%d/maps", os.Getpid()))
@@ -152,11 +152,11 @@ func initFilter(logger *zap.SugaredLogger, tomlWhitelist bool, whitelistPath str
 		return nil, fmt.Errorf("failed to parse whitelists: %w", err)
 	}
 
-	whitelists := bpf.ParseMapWhitelists(parsedWLs.NameSyscallMap)
+	whitelists := filter.ParseMapWhitelists(parsedWLs.NameSyscallMap)
 
-	cfg := bpf.DefaultFilterCfg()
+	cfg := filter.DefaultFilterCfg()
 
-	filter, err := bpf.NewFilter(logger, bpf.NewLibcRange(libcRange.Start, libcRange.End), whitelists, cfg)
+	filter, err := filter.NewFilter(logger, filter.NewLibcRange(libcRange.Start, libcRange.End), whitelists, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create a new Filter: %w", err)
 	}
@@ -164,7 +164,7 @@ func initFilter(logger *zap.SugaredLogger, tomlWhitelist bool, whitelistPath str
 	return filter, nil
 }
 
-func logStats(logger *zap.SugaredLogger, filter *bpf.Filter) {
+func logStats(logger *zap.SugaredLogger, filter *filter.Filter) {
 	stats, err := filter.ReadStatsMap()
 	if err != nil {
 		log.Fatalf("failed to read stats map: %v", err)

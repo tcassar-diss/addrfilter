@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/tcassar-diss/addrfilter/bpf"
+	"github.com/tcassar-diss/addrfilter/bpf/filter"
 	"github.com/tcassar-diss/addrfilter/frontend"
 	"github.com/urfave/cli/v2"
 )
@@ -72,11 +72,11 @@ func main() {
 			cfg.ExecArgs = cCtx.Args().Slice()[2:]
 
 			if warn {
-				cfg.WarnMode = &bpf.Warn
+				cfg.WarnMode = &filter.Warn
 			} else if killAll {
-				cfg.WarnMode = &bpf.KillAll
+				cfg.WarnMode = &filter.KillAll
 			} else {
-				cfg.WarnMode = &bpf.KillPID
+				cfg.WarnMode = &filter.KillPID
 			}
 
 			bts, err := json.Marshal(cfg)
