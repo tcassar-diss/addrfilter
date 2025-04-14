@@ -12,6 +12,8 @@ import (
 	"github.com/cilium/ebpf"
 )
 
+type wlgenSyscallWhitelist struct{ Bitmap [58]uint8 }
+
 // loadWlgen returns the embedded CollectionSpec for wlgen.
 func loadWlgen() (*ebpf.CollectionSpec, error) {
 	reader := bytes.NewReader(_WlgenBytes)
@@ -54,6 +56,7 @@ type wlgenSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type wlgenProgramSpecs struct {
+	Wlgen *ebpf.ProgramSpec `ebpf:"wlgen"`
 }
 
 // wlgenMapSpecs contains maps before they are loaded into the kernel.
@@ -74,6 +77,7 @@ type wlgenMapSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type wlgenVariableSpecs struct {
+	UnusedSyscallWhitelist *ebpf.VariableSpec `ebpf:"unused_syscall_whitelist"`
 }
 
 // wlgenObjects contains all objects after they have been loaded into the kernel.
@@ -123,16 +127,20 @@ func (m *wlgenMaps) Close() error {
 //
 // It can be passed to loadWlgenObjects or ebpf.CollectionSpec.LoadAndAssign.
 type wlgenVariables struct {
+	UnusedSyscallWhitelist *ebpf.Variable `ebpf:"unused_syscall_whitelist"`
 }
 
 // wlgenPrograms contains all programs after they have been loaded into the kernel.
 //
 // It can be passed to loadWlgenObjects or ebpf.CollectionSpec.LoadAndAssign.
 type wlgenPrograms struct {
+	Wlgen *ebpf.Program `ebpf:"wlgen"`
 }
 
 func (p *wlgenPrograms) Close() error {
-	return _WlgenClose()
+	return _WlgenClose(
+		p.Wlgen,
+	)
 }
 
 func _WlgenClose(closers ...io.Closer) error {

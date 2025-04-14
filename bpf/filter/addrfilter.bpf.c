@@ -22,7 +22,6 @@ static inline void record_stat(enum stat_type stat) {
   __sync_fetch_and_add(s_count, 1);
 }
 
-
 static inline int warn_pid(pid_t pid) {
   pid_t *p = (pid_t *)bpf_ringbuf_reserve(&warn_buf, sizeof(pid_t), 0);
   if (!p) {
@@ -66,20 +65,6 @@ static inline int strcmp(const char *cs, const char *ct) {
   return 0;
 }
 
-/*  find_syscall_site walks the stack to find the first non-libc return pointer.
-
-    for this, it uses information from the libc_range_map.
-    If identification fails, a reason will be logged by the function.
-
-    args:
-        ctx: pointer to raw tracepoint args (used by bpf_get_stack)
-         rp: address to write syscall site to.
-        pid: calling pid
-
-    returns:
-         0 on success,
-        -1 on exit.
-*/
 static inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx,
                                     u64 *rp, pid_t pid) {
   const int32 zero = 0;
@@ -135,12 +120,6 @@ static inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx,
   return 0;
 }
 
-/*  memory_filename contains a filename and its length.*/
-struct memory_filename {
-  char d_iname[MAX_FILENAME_LEN]; /* this is just the dname, not a whole path */
-  int size;
-};
-
 /* get_dname retrieves the filename mapped to a memory region */
 static long get_dname(struct task_struct *task, struct vm_area_struct *vma,
                       struct memory_filename *data) {
@@ -150,15 +129,6 @@ static long get_dname(struct task_struct *task, struct vm_area_struct *vma,
   if (!data) {
     return 0;
   }
-
-  // todo:
-  //  find_vma will return the va closest to the provided value
-  //  so double check that the va assigned is actually correct
-  // counter:
-  //  might be fine (but would imply bpf_find_vma has different behaviour to
-  //  find_vma) bpf:    https://docs.ebpf.io/linux/helper-function/bpf_find_vma/
-  //  kernel:
-  //  https://www.kernel.org/doc/gorman/html/understand/understand007.html
 
   if (vma->vm_file) {
     dentry = vma->vm_file->f_path.dentry;
@@ -214,15 +184,6 @@ static inline int assign_filename(struct task_struct *task, u64 rp,
   return 0;
 }
 
-/* apply_filter decided whether to apply the filtering mechanism to a given pid.
- *  apply_filter also handles fork following:
- *   if a pid is not in the follow map but the parent is, trace_pid will
- *   apply the filter to the process. It will also add pid to the follow map
- *   such that fork following will apply to forks of forks of ... of forks.
- *
- * in the case where an operation fails (such as a PID_READ_FAILED),
- * then no filter is applied and the error is logged.
- */
 static inline bool apply_filter(struct task_struct *task, pid_t pid) {
   pid_t ppid;
 

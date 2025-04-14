@@ -199,6 +199,10 @@ struct syscall_whitelist {
 static inline bool check_whitelist_field(struct syscall_whitelist *entry,
                                          u64 field_index);
 
+/* set_whitelist_field sets the relevant whitelist field to true */
+static inline int set_whitelist_field(struct syscall_whitelist *entry,
+                                      u64 field_index);
+
 /* path_whitelist_map associates a filename from /proc/PID/maps with a syscall
   whitelist.
 
@@ -234,7 +238,44 @@ struct {
   __uint(map_flags, 0);
 } stack_dbg_map SEC(".maps");
 
+/*  memory_filename contains a filename and its length.*/
+struct memory_filename {
+  char d_iname[MAX_FILENAME_LEN]; /* this is just the dname, not a whole path */
+  int size;
+};
+
 /* strcmp is a helper which safely compares two strings  for equality */
 static inline int strcmp(const char *cs, const char *ct);
+
+/* apply_filter decided whether to apply the filtering mechanism to a given pid.
+ *  apply_filter also handles fork following:
+ *   if a pid is not in the follow map but the parent is, trace_pid will
+ *   apply the filter to the process. It will also add pid to the follow map
+ *   such that fork following will apply to forks of forks of ... of forks.
+ *
+ * in the case where an operation fails (such as a PID_READ_FAILED),
+ * then no filter is applied and the error is logged.
+ */
+static inline bool apply_filter(struct task_struct *task, pid_t pid);
+
+/*  find_syscall_site walks the stack to find the first non-libc return pointer.
+
+    for this, it uses information from the libc_range_map.
+    If identification fails, a reason will be logged by the function.
+
+    args:
+        ctx: pointer to raw tracepoint args (used by bpf_get_stack)
+         rp: address to write syscall site to.
+        pid: calling pid
+
+    returns:
+         0 on success,
+        -1 on exit.
+*/
+static inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx,
+                                    u64 *rp, pid_t pid);
+
+static inline int assign_filename(struct task_struct *task, u64 rp,
+                                  struct memory_filename *mem_filename);
 
 #endif
