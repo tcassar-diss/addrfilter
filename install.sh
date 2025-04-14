@@ -10,7 +10,7 @@ BUILD_PATH="./bin/$BINARY_NAME"
 INSTALL_PATH="/usr/local/bin/$BINARY_NAME"
 
 log "Building $BINARY_NAME..."
-make
+make -j
 
 log "Installing to $INSTALL_PATH..."
 sudo install -m 755 "$BUILD_PATH" "$INSTALL_PATH"

@@ -13,21 +13,9 @@ import (
 
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
+	"github.com/tcassar-diss/addrfilter/bpf"
 	"go.uber.org/zap"
 )
-
-type LibcRange struct {
-	start uint64
-	end   uint64
-}
-
-// NewLibcRange returns a start and end as a LibcRange
-func NewLibcRange(start, end uint64) *LibcRange {
-	return &LibcRange{
-		start: start,
-		end:   end,
-	}
-}
 
 // FilterCfg configures addrfilter's behaviour.
 // warnmode will determine addrfilter's behaviour if a process trips the syscall
@@ -47,7 +35,7 @@ type FilterCfg struct {
 type Filter struct {
 	logger     *zap.SugaredLogger
 	libcRange  addrfilterVmRange
-	whitelists []*Whitelist
+	whitelists []*bpf.Whitelist
 	cfg        *FilterCfg
 	profiler   *Profiler
 	tracepoint *link.Link
@@ -65,15 +53,15 @@ func DefaultFilterCfg() *FilterCfg {
 // NewFilter initialises a new filter.
 func NewFilter(
 	logger *zap.SugaredLogger,
-	libcRange *LibcRange,
-	whitelists []*Whitelist,
+	libcRange *bpf.LibcRange,
+	whitelists []*bpf.Whitelist,
 	cfg *FilterCfg,
 ) (*Filter, error) {
 	f := &Filter{
 		logger: logger,
 		libcRange: addrfilterVmRange{
-			Start: libcRange.start,
-			End:   libcRange.end,
+			Start: libcRange.Start,
+			End:   libcRange.End,
 		},
 		whitelists: whitelists,
 		cfg:        cfg,
@@ -134,6 +122,7 @@ func (f *Filter) ProtectPID(pid int32) error {
 
 // ReadStatsMap will report Stats of execution.
 func (f *Filter) ReadStatsMap() (*Stats, error) {
+	// TODO: refactor into common.go
 	stats := make([]uint64, addrfilterStatTypeSTAT_END)
 
 	ss := []addrfilterStatType{
@@ -344,7 +333,7 @@ func (f *Filter) regWhitelists() error {
 	return nil
 }
 
-func (f *Filter) registerWhitelist(whitelist *Whitelist) error {
+func (f *Filter) registerWhitelist(whitelist *bpf.Whitelist) error {
 	var w addrfilterSyscallWhitelist
 
 	name, err := whitelist.MarshalFilename()
@@ -355,7 +344,7 @@ func (f *Filter) registerWhitelist(whitelist *Whitelist) error {
 	err = f.objects.PathWhitelistMap.Lookup(&name, &w)
 	if err != nil {
 		if w.Bitmap != [58]uint8{} {
-			return fmt.Errorf("%w: non-zerod bitmap already exists", ErrWhitelistAlreadyExists)
+			return fmt.Errorf("%w: non-zerod bitmap already exists", bpf.ErrWhitelistAlreadyExists)
 		}
 	}
 
@@ -376,7 +365,7 @@ func (f *Filter) regLibc() error {
 	end := f.libcRange.End
 
 	if end <= start {
-		return fmt.Errorf("%w: end cannot be less than start", ErrBadLibcRange)
+		return fmt.Errorf("%w: end cannot be less than start", bpf.ErrBadLibcRange)
 	}
 
 	f.logger.Infow("updating libc address space",

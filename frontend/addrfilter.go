@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/tcassar-diss/addrfilter/bpf"
 	"github.com/tcassar-diss/addrfilter/bpf/filter"
 	"go.uber.org/zap"
 )
@@ -161,7 +162,7 @@ func initFilter(logger *zap.SugaredLogger, cfg *AddrfilterCfg) (*filter.Filter, 
 		return nil, nil, fmt.Errorf("failed to parse whitelists: %w", err)
 	}
 
-	whitelists := filter.ParseMapWhitelists(parsedWLs.NameSyscallMap)
+	whitelists := bpf.ParseMapWhitelists(parsedWLs.NameSyscallMap)
 
 	var (
 		profileDest io.Writer
@@ -182,7 +183,7 @@ func initFilter(logger *zap.SugaredLogger, cfg *AddrfilterCfg) (*filter.Filter, 
 		ProfWriter: profileDest,
 	}
 
-	filter, err := filter.NewFilter(logger, filter.NewLibcRange(libcRange.Start, libcRange.End), whitelists, fCfg)
+	filter, err := filter.NewFilter(logger, bpf.NewLibcRange(libcRange.Start, libcRange.End), whitelists, fCfg)
 	if err != nil {
 		return nil, closeFn, fmt.Errorf("failed to create a new Filter: %w", err)
 	}

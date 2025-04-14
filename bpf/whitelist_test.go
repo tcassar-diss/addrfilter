@@ -1,20 +1,22 @@
-package filter
+package bpf_test
 
 import (
 	"errors"
 	"testing"
+
+	"github.com/tcassar-diss/addrfilter/bpf"
 )
 
 func TestWhitelist_AsBitmap(t *testing.T) {
 	tests := []struct {
 		name      string
-		whitelist Whitelist
+		whitelist bpf.Whitelist
 		expected  [58]uint8
 		err       error
 	}{
 		{
 			name:      "Single syscall",
-			whitelist: Whitelist{Filename: "test1", Syscalls: []uint{3}},
+			whitelist: bpf.Whitelist{Filename: "test1", Syscalls: []uint{3}},
 			expected: func() [58]uint8 {
 				var b [58]uint8
 				b[0] = 1 << 3
@@ -24,7 +26,7 @@ func TestWhitelist_AsBitmap(t *testing.T) {
 		},
 		{
 			name:      "Multiple syscalls",
-			whitelist: Whitelist{Filename: "test2", Syscalls: []uint{3, 10, 23}},
+			whitelist: bpf.Whitelist{Filename: "test2", Syscalls: []uint{3, 10, 23}},
 			expected: func() [58]uint8 {
 				var b [58]uint8
 				b[0] = 1 << 3
@@ -36,9 +38,9 @@ func TestWhitelist_AsBitmap(t *testing.T) {
 		},
 		{
 			name:      "Out of range syscall",
-			whitelist: Whitelist{Filename: "test3", Syscalls: []uint{500}},
+			whitelist: bpf.Whitelist{Filename: "test3", Syscalls: []uint{500}},
 			expected:  [58]uint8{},
-			err:       ErrInvalidSyscallNr,
+			err:       bpf.ErrInvalidSyscallNr,
 		},
 	}
 
@@ -60,25 +62,25 @@ func TestWhitelist_AsBitmap(t *testing.T) {
 func TestWhitelist_MarshalFilename(t *testing.T) {
 	tests := []struct {
 		name      string
-		whitelist Whitelist
+		whitelist bpf.Whitelist
 		expected  [256]byte
 		err       error
 	}{
 		{
 			name:      "hello",
-			whitelist: Whitelist{Filename: "hello"},
-			expected:  [256]byte{104, 101, 108, 108, 111, 00},
+			whitelist: bpf.Whitelist{Filename: "hello"},
+			expected:  [256]byte{104, 101, 108, 108, 111, 0o0},
 			err:       nil,
 		},
 		{
 			name:      "too long",
-			whitelist: Whitelist{Filename: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Syscalls: []uint{3, 10, 23}},
+			whitelist: bpf.Whitelist{Filename: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Syscalls: []uint{3, 10, 23}},
 			expected:  [256]byte{},
-			err:       ErrFilenameMarshalFailed,
+			err:       bpf.ErrFilenameMarshalFailed,
 		},
 		{
 			name:      "file name non-existent",
-			whitelist: Whitelist{Filename: "", Syscalls: []uint{500}},
+			whitelist: bpf.Whitelist{Filename: "", Syscalls: []uint{500}},
 			expected:  [256]byte{0x00},
 			err:       nil,
 		},

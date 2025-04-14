@@ -7,11 +7,7 @@ import (
 
 var (
 	ErrCfgInvalid             = errors.New("invalid config")
-	ErrInvalidSyscallNr       = errors.New("invalid syscall number")
-	ErrFilenameMarshalFailed  = errors.New("failed to marshal filename")
-	ErrBadLibcRange           = errors.New("nonsensical libc range given")
-	ErrWhitelistAlreadyExists = errors.New("whitelist already exists")
-)
+	)
 
 type Stats struct {
 	GetCurrentTaskFailed  uint64

@@ -1,4 +1,4 @@
-package filter
+package bpf
 
 import (
 	"encoding/json"
