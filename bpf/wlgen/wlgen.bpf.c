@@ -60,6 +60,9 @@ int wlgen(struct bpf_raw_tracepoint_args *ctx) {
       &path_whitelist_map, &mem_filename.d_iname);
 
   if (!whitelist) {
+    char fmt[] = "Here no whitelist %d!";
+    bpf_trace_printk(fmt, sizeof(fmt), syscall_nr);
+
     // TODO: Create whitelist with file name as key
     return 0;
   }
@@ -72,6 +75,9 @@ int wlgen(struct bpf_raw_tracepoint_args *ctx) {
   }
 
   // TODO: write whitelist back to map
+
+  char fmt[] = "Here %d!";
+  bpf_trace_printk(fmt, sizeof(fmt), syscall_nr);
 
   return 0;
 }

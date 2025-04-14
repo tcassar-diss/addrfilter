@@ -134,8 +134,6 @@ func main() {
 					fmt.Println(string(bts))
 				}
 
-				// TODO: run generator
-
 				if err := frontend.RunGenerate(gCfg); err != nil {
 					return cli.Exit(
 						fmt.Sprintf("addrfilter encounted an error while generating a whitelist it couldn't recover from: %v", err),
