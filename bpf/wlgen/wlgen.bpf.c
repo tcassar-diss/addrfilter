@@ -9,11 +9,8 @@ struct syscall_whitelist *unused_syscall_whitelist __attribute__((unused));
 
 static inline int set_whitelist_field(struct syscall_whitelist *entry,
                                       u64 field_index) {
-  if (field_index / 8 > 8) {
-    return -1;
-  }
-  if (field_index % 8 > 8 || field_index % 8 < 0) {
-    return -1;
+  if (field_index / 8 >= WHITELIST_LEN) {
+    return -1; // Out of bounds
   }
   entry->bitmap[field_index / 8] |= (1 << (field_index % 8));
   return 0;
@@ -60,24 +57,39 @@ int wlgen(struct bpf_raw_tracepoint_args *ctx) {
       &path_whitelist_map, &mem_filename.d_iname);
 
   if (!whitelist) {
-    char fmt[] = "Here no whitelist %d!";
-    bpf_trace_printk(fmt, sizeof(fmt), syscall_nr);
-
-    // TODO: Create whitelist with file name as key
-    return 0;
+    struct syscall_whitelist empty_whitelist = {0};
+    if (bpf_map_update_elem(&path_whitelist_map, &mem_filename.d_iname,
+                            &empty_whitelist, 0) != 0) {
+      char fmt[] = "failed to add empty whitelist for .so %s";
+      bpf_trace_printk(fmt, sizeof(fmt), mem_filename.d_iname);
+      return 1;
+    };
   }
 
-  if (set_whitelist_field(whitelist, syscall_nr) != 0) {
-    char fmt[] = "failed to set syscall_nr in whitelist";
-    bpf_trace_printk(fmt, sizeof(fmt));
+  whitelist = (struct syscall_whitelist *)bpf_map_lookup_elem(
+      &path_whitelist_map, &mem_filename.d_iname);
+  if (!whitelist) {
+    char fmt[] = "falied to get new whitelist";
+    bpf_trace_printk(fmt, sizeof(fmt), mem_filename.d_iname);
+
+    return 1;
+  }
+
+  int err = set_whitelist_field(whitelist, syscall_nr);
+  if (err != 0) {
+    char fmt[] = "failed to set syscall_nr %ld in whitelist: %d";
+    bpf_trace_printk(fmt, sizeof(fmt), syscall_nr, err);
 
     return -1;
   }
 
-  // TODO: write whitelist back to map
+  if (bpf_map_update_elem(&path_whitelist_map, &mem_filename.d_iname, whitelist,
+                          0) != 0) {
+    char fmt[] = "failed to add whitelist for .so %s";
+    bpf_trace_printk(fmt, sizeof(fmt), &mem_filename.d_iname);
 
-  char fmt[] = "Here %d!";
-  bpf_trace_printk(fmt, sizeof(fmt), syscall_nr);
+    return 1;
+  }
 
   return 0;
 }

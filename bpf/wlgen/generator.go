@@ -3,6 +3,7 @@ package wlgen
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/cilium/ebpf/link"
 	"github.com/tcassar-diss/addrfilter/bpf"
@@ -83,6 +84,34 @@ func (g *WLGenerator) MonitorPID(pid int32) error {
 	return nil
 }
 
+func (g *WLGenerator) ReadWhitelists() (map[string][]uint, error) {
+	var (
+		filename [256]byte
+		syscalls wlgenSyscallWhitelist
+	)
+
+	whitelists := make(map[string][]uint)
+	nextWhitelist := g.objects.PathWhitelistMap.Iterate()
+
+	for {
+		next := nextWhitelist.Next(&filename, &syscalls)
+
+		if err := nextWhitelist.Err(); err != nil {
+			return nil, fmt.Errorf("failed to read whitelist: %w", err)
+		}
+
+		name := strings.Trim(string(filename[:]), "\u0000")
+
+		whitelists[name] = g.bitmapToUints(syscalls)
+
+		if !next {
+			break
+		}
+	}
+
+	return whitelists, nil
+}
+
 func (g *WLGenerator) regLibc() error {
 	start := g.libcRange.Start
 	end := g.libcRange.End
@@ -110,4 +139,19 @@ func (g *WLGenerator) regLibc() error {
 	}
 
 	return nil
+}
+
+func (g *WLGenerator) bitmapToUints(bitmap wlgenSyscallWhitelist) []uint {
+	var results []uint
+
+	for byteIndex, byteVal := range bitmap.Bitmap {
+		for bitIndex := range 8 {
+			if byteVal&(1<<bitIndex) != 0 {
+				syscallNum := uint(byteIndex*8 + bitIndex)
+				results = append(results, syscallNum)
+			}
+		}
+	}
+
+	return results
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -14,13 +13,13 @@ import (
 	"github.com/tcassar-diss/addrfilter/bpf/wlgen"
 )
 
-type GenerateCfg struct {
+type GeneratorCfg struct {
 	WhitelistPath string
 	Options       *GlobalFlags
 	CmdCfg        *CmdCfg
 }
 
-func RunGenerate(cfg *GenerateCfg) error {
+func RunGenerator(cfg *GeneratorCfg) error {
 	logger, err := initLogger()
 	if err != nil {
 		return fmt.Errorf("failed to get a logger: %w", err)
@@ -54,12 +53,14 @@ func RunGenerate(cfg *GenerateCfg) error {
 		errChan <- g.Start(ctx)
 	}()
 
+	// XXX: do this with two forks so we can place the PPID in the follow map
+	// before child is spawned
 	if err = cmd.Start(); err != nil {
-		log.Fatalf("failed to launch %s%s: %v", cfg.CmdCfg.ExecPath, fmt.Sprintf(" %s", cfg.CmdCfg.ExecArgs), err)
+		return fmt.Errorf("failed to launch %s%s: %v", cfg.CmdCfg.ExecPath, fmt.Sprintf(" %s", cfg.CmdCfg.ExecArgs), err)
 	}
 
 	if err = g.MonitorPID(int32(cmd.Process.Pid)); err != nil {
-		log.Fatalf("failed to protect executable: %v", err)
+		return fmt.Errorf("failed to protect executable: %v", err)
 	}
 
 	err = cmd.Wait()
@@ -82,7 +83,32 @@ func RunGenerate(cfg *GenerateCfg) error {
 	cancel()
 
 	if err = <-errChan; err != nil {
-		log.Fatalf("error encountered while generating whitelists: %v", err)
+		return fmt.Errorf("error encountered while generating whitelists: %v", err)
+	}
+
+	logger.Infow("saving whitelists!")
+	if err := saveWhitelists(g, cfg.WhitelistPath); err != nil {
+		return fmt.Errorf("failed to save whitelists: %w", err)
+	}
+
+	return nil
+}
+
+func saveWhitelists(g *wlgen.WLGenerator, filepath string) error {
+	f, err := os.Create(filepath)
+	if err != nil {
+		return fmt.Errorf("failed to create file for whitelists: %w", err)
+	}
+
+	wls, err := g.ReadWhitelists()
+	if err != nil {
+		return fmt.Errorf("failed to read whitelists: %w", err)
+	}
+
+	if err := MarshalTOMLWhitelists(f, &Whitelist{
+		NameSyscallMap: wls,
+	}); err != nil {
+		return fmt.Errorf("failed to marshal whitelist: %w", err)
 	}
 
 	return nil

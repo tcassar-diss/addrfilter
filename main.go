@@ -17,7 +17,7 @@ func main() {
 		Options: &frontend.GlobalFlags{},
 	}
 
-	gCfg := &frontend.GenerateCfg{
+	gCfg := &frontend.GeneratorCfg{
 		WhitelistPath: "",
 		Options:       &frontend.GlobalFlags{},
 		CmdCfg:        &frontend.CmdCfg{},
@@ -112,18 +112,19 @@ func main() {
 			Name:  "generate",
 			Usage: "generates whitelists for addrfilter via dynamic analysis",
 			Action: func(cCtx *cli.Context) error {
-				if nArgs := cCtx.Args().Len(); nArgs < 2 {
+				if nArgs := cCtx.Args().Len(); nArgs < 1 {
 					_ = cli.ShowAppHelp(cCtx)
 
 					return cli.Exit(
-						fmt.Sprintf("\nERROR: Too few arguments! Expected >2, got %d", nArgs),
+						fmt.Sprintf("\nERROR: Too few arguments! Expected >1, got %d", nArgs),
 						1,
 					)
 				}
 
-				gCfg.WhitelistPath = cCtx.Args().Get(0)
-				gCfg.CmdCfg.ExecPath = cCtx.Args().Get(1)
-				gCfg.CmdCfg.ExecArgs = cCtx.Args().Slice()[2:]
+				gCfg.CmdCfg.ExecPath = cCtx.Args().Get(0)
+				gCfg.CmdCfg.ExecArgs = cCtx.Args().Slice()[1:]
+
+				gCfg.WhitelistPath = fmt.Sprintf("%s-whitelist.toml", gCfg.CmdCfg.ExecPath)
 
 				if aCfg.Options.Verbose {
 					bts, err := json.Marshal(gCfg)
@@ -134,7 +135,7 @@ func main() {
 					fmt.Println(string(bts))
 				}
 
-				if err := frontend.RunGenerate(gCfg); err != nil {
+				if err := frontend.RunGenerator(gCfg); err != nil {
 					return cli.Exit(
 						fmt.Sprintf("addrfilter encounted an error while generating a whitelist it couldn't recover from: %v", err),
 						2,

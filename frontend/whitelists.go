@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"strconv"
 
@@ -38,6 +39,19 @@ func ParseTOMLWhitelists(filepath string) (*Whitelist, error) {
 	}
 
 	return &Whitelist{NameSyscallMap: parsed.NameSyscallMap}, nil
+}
+
+func MarshalTOMLWhitelists(file io.Writer, wl *Whitelist) error {
+	tomlData := whitelistTOML{
+		NameSyscallMap: wl.NameSyscallMap,
+	}
+
+	encoder := toml.NewEncoder(file)
+	if err := encoder.Encode(tomlData); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func ParseSysoWhitelists(filepath string) (*Whitelist, error) {

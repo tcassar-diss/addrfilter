@@ -34,14 +34,9 @@ static inline int warn_pid(pid_t pid) {
 
 static inline bool check_whitelist_field(struct syscall_whitelist *entry,
                                          u64 field_index) {
-  if (field_index / 8 > 8) {
-    return -1;
+  if (field_index / 8 >= WHITELIST_LEN) {
+    return false;  // Out of bounds, return false instead of error code
   }
-
-  if (field_index % 8 > 8 || field_index % 8 < 0) {
-    return -1;
-  }
-
   return (entry->bitmap[field_index / 8] & (1 << (field_index % 8))) != 0;
 }
 
