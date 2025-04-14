@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -50,9 +51,13 @@ func Run(cfg *AddrfilterCfg) error {
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 
-	filter, err := initFilter(logger, cfg.Options.TomlWhitelist, cfg.WhitelistPath)
+	filter, closeFn, err := initFilter(logger, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialise filter: %w", err)
+	}
+
+	if closeFn != nil {
+		defer closeFn()
 	}
 
 	errChan := make(chan error, 1)
@@ -133,35 +138,52 @@ func configureCommand(ctx context.Context, cfg *AddrfilterCfg) *exec.Cmd {
 	return cmd
 }
 
-func initFilter(logger *zap.SugaredLogger, tomlWhitelist bool, whitelistPath string) (*filter.Filter, error) {
+func initFilter(logger *zap.SugaredLogger, cfg *AddrfilterCfg) (*filter.Filter, func() error, error) {
 	// use this process's libc address range (spawned process will have the same
 	// range so may as well set up before the process starts)
 	libcRange, err := FindLibc(fmt.Sprintf("/proc/%d/maps", os.Getpid()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to get libc range for current process: %w", err)
+		return nil, nil, fmt.Errorf("failed to get libc range for current process: %w", err)
 	}
 
 	var parsedWLs *Whitelist
 
-	if !tomlWhitelist {
-		parsedWLs, err = ParseSysoWhitelists(whitelistPath)
+	if cfg.Options.TomlWhitelist {
+		parsedWLs, err = ParseTOMLWhitelists(cfg.WhitelistPath)
 	} else {
-		parsedWLs, err = ParseTOMLWhitelists(whitelistPath)
+		parsedWLs, err = ParseSysoWhitelists(cfg.WhitelistPath)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse whitelists: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse whitelists: %w", err)
 	}
 
 	whitelists := filter.ParseMapWhitelists(parsedWLs.NameSyscallMap)
 
-	cfg := filter.DefaultFilterCfg()
+	var (
+		profileDest io.Writer
+		closeFn     func() error
+	)
 
-	filter, err := filter.NewFilter(logger, filter.NewLibcRange(libcRange.Start, libcRange.End), whitelists, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create a new Filter: %w", err)
+	if cfg.Options.Profile {
+		f, err := os.Create(fmt.Sprintf("%s-prof.csv", cfg.ExecPath))
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create an output file for profiler data: %w", err)
+		}
+
+		profileDest = f
 	}
 
-	return filter, nil
+	fCfg := &filter.FilterCfg{
+		WarnMode:   *cfg.WarnMode,
+		ProfWriter: profileDest,
+	}
+
+	filter, err := filter.NewFilter(logger, filter.NewLibcRange(libcRange.Start, libcRange.End), whitelists, fCfg)
+	if err != nil {
+		return nil, closeFn, fmt.Errorf("failed to create a new Filter: %w", err)
+	}
+
+	return filter, closeFn, nil
 }
 
 func logStats(logger *zap.SugaredLogger, filter *filter.Filter) {
@@ -175,5 +197,5 @@ func logStats(logger *zap.SugaredLogger, filter *filter.Filter) {
 		log.Fatalf("failed to marshal stats: %v", err)
 	}
 
-	logger.Infoln(string(bts))
+	fmt.Println(string(bts))
 }
