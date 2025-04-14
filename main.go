@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
+	"path/filepath"
 
 	"github.com/tcassar-diss/addrfilter/bpf/filter"
 	"github.com/tcassar-diss/addrfilter/frontend"
@@ -79,6 +81,14 @@ func main() {
 			aCfg.CmdCfg.ExecPath = cCtx.Args().Get(1)
 			aCfg.CmdCfg.ExecArgs = cCtx.Args().Slice()[2:]
 
+			wd, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("can't get current working directory: %w", err)
+			}
+
+			aCfg.WDir = wd
+			aCfg.ExecName = path.Base(aCfg.CmdCfg.ExecPath)
+
 			if warn {
 				aCfg.WarnMode = &filter.Warn
 			} else if killAll {
@@ -124,7 +134,14 @@ func main() {
 				gCfg.CmdCfg.ExecPath = cCtx.Args().Get(0)
 				gCfg.CmdCfg.ExecArgs = cCtx.Args().Slice()[1:]
 
-				gCfg.WhitelistPath = fmt.Sprintf("%s-whitelist.toml", gCfg.CmdCfg.ExecPath)
+				execName := filepath.Base(gCfg.CmdCfg.ExecPath)
+
+				wd, err := os.Getwd()
+				if err != nil {
+					return fmt.Errorf("failed to getwd: %w", err)
+				}
+
+				gCfg.WhitelistPath = path.Join(wd, fmt.Sprintf("%s-whitelist.toml", execName))
 
 				if aCfg.Options.Verbose {
 					bts, err := json.Marshal(gCfg)

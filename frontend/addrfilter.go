@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path"
 	"syscall"
 
 	"github.com/tcassar-diss/addrfilter/bpf"
@@ -39,6 +40,8 @@ type AddrfilterCfg struct {
 	WarnMode      *filter.WarnMode
 	Options       *GlobalFlags
 	CmdCfg        *CmdCfg
+	WDir          string
+	ExecName      string
 }
 
 func RunAddrfilter(cfg *AddrfilterCfg) error {
@@ -171,7 +174,7 @@ func initFilter(logger *zap.SugaredLogger, cfg *AddrfilterCfg) (*filter.Filter, 
 	)
 
 	if cfg.Options.Profile {
-		f, err := os.Create(fmt.Sprintf("%s-prof.csv", cfg.CmdCfg.ExecPath))
+		f, err := os.Create(path.Join(cfg.WDir, fmt.Sprintf("%s-prof.csv", cfg.ExecName)))
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create an output file for profiler data: %w", err)
 		}

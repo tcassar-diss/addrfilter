@@ -1,5 +1,4 @@
 *.o
-main.c
 .idea
 bin
 *.json
@@ -9,4 +8,5 @@ mins
 examples/
 out/
 benchmarks/
+*.toml 
 
