@@ -14,6 +14,12 @@ import (
 
 type wlgenSyscallWhitelist struct{ Bitmap [58]uint8 }
 
+type wlgenVmRange struct {
+	Start    uint64
+	End      uint64
+	Filename [256]int8
+}
+
 // loadWlgen returns the embedded CollectionSpec for wlgen.
 func loadWlgen() (*ebpf.CollectionSpec, error) {
 	reader := bytes.NewReader(_WlgenBytes)
@@ -78,6 +84,7 @@ type wlgenMapSpecs struct {
 // It can be passed ebpf.CollectionSpec.Assign.
 type wlgenVariableSpecs struct {
 	UnusedSyscallWhitelist *ebpf.VariableSpec `ebpf:"unused_syscall_whitelist"`
+	UnusedVmRange          *ebpf.VariableSpec `ebpf:"unused_vm_range"`
 }
 
 // wlgenObjects contains all objects after they have been loaded into the kernel.
@@ -128,6 +135,7 @@ func (m *wlgenMaps) Close() error {
 // It can be passed to loadWlgenObjects or ebpf.CollectionSpec.LoadAndAssign.
 type wlgenVariables struct {
 	UnusedSyscallWhitelist *ebpf.Variable `ebpf:"unused_syscall_whitelist"`
+	UnusedVmRange          *ebpf.Variable `ebpf:"unused_vm_range"`
 }
 
 // wlgenPrograms contains all programs after they have been loaded into the kernel.

@@ -1,5 +1,5 @@
-#ifndef MAPS_H
-#define MAPS_H
+#ifndef TRACING_COMMON_H
+#define TRACING_COMMON_H
 
 #include "vmlinux.h"
 
@@ -278,4 +278,4 @@ static inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx,
 static inline int assign_filename(struct task_struct *task, u64 rp,
                                   struct memory_filename *mem_filename);
 
-#endif
+#endif /* TRACING_COMMON_H */
