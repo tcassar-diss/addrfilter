@@ -18,7 +18,7 @@ func TestFindLibc(t *testing.T) {
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
 
-	testVARoot := path.Join(cwd, "./test-resources/test_vas")
+	testVARoot := path.Join(cwd, "../test-resources/test_vas")
 
 	cases := []testcase{
 		{

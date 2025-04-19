@@ -17,7 +17,7 @@ import (
 // Calling WLGenerator.Start() starts the whitelist generation,
 type WLGenerator struct {
 	logger     *zap.SugaredLogger
-	libcRange  wlgenVmRange
+	libcRange  *wlgenVmRange
 	whitelists []*bpf.Whitelist
 	tracepoint *link.Link
 	objects    *wlgenObjects
@@ -25,14 +25,9 @@ type WLGenerator struct {
 
 func NewWLGenerator(
 	logger *zap.SugaredLogger,
-	libcRange *bpf.LibcRange,
 ) (*WLGenerator, error) {
 	g := &WLGenerator{
-		logger: logger,
-		libcRange: wlgenVmRange{
-			Start: libcRange.Start,
-			End:   libcRange.End,
-		},
+		logger:  logger,
 		objects: &wlgenObjects{},
 	}
 
@@ -48,15 +43,15 @@ func (g *WLGenerator) init() error {
 		return fmt.Errorf("failed to load wlgen objects: %w", err)
 	}
 
-	if err := g.regLibc(); err != nil {
-		return fmt.Errorf("failed to register libc address: %w", err)
-	}
-
 	return nil
 }
 
 // Start mounts the bpf tracepoint to generate whitelists. Start is blocking!
 func (g *WLGenerator) Start(ctx context.Context) error {
+	if err := g.regLibc(); err != nil {
+		return fmt.Errorf("failed to register libc address: %w", err)
+	}
+
 	tp, err := link.AttachRawTracepoint(link.RawTracepointOptions{
 		Name:    "sys_enter",
 		Program: g.objects.Wlgen,
@@ -82,6 +77,13 @@ func (g *WLGenerator) MonitorPID(pid int32) error {
 	}
 
 	return nil
+}
+
+func (g *WLGenerator) SetLibc(start uint64, end uint64) {
+	g.libcRange = &wlgenVmRange{
+		Start: start,
+		End:   end,
+	}
 }
 
 func (g *WLGenerator) ReadWhitelists() (map[string][]uint, error) {
@@ -113,6 +115,10 @@ func (g *WLGenerator) ReadWhitelists() (map[string][]uint, error) {
 }
 
 func (g *WLGenerator) regLibc() error {
+	if g.libcRange == nil {
+		return fmt.Errorf("%w: libc range not initialised", bpf.ErrBadLibcRange)
+	}
+
 	start := g.libcRange.Start
 	end := g.libcRange.End
 
@@ -130,8 +136,8 @@ func (g *WLGenerator) regLibc() error {
 	if err := g.objects.LibcRangeMap.Put(
 		int32(zero),
 		wlgenVmRange{
-			Start:    start,
-			End:      end,
+			Start:    0,
+			End:      0x7ffff7fff000,
 			Filename: [256]int8{},
 		},
 	); err != nil {

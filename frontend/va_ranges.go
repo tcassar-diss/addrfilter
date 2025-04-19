@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"time"
 )
 
 var ErrFindLibcFailed = errors.New("failed to find libc mapping")
@@ -30,6 +31,9 @@ type VMRange struct {
 //
 // it requires path: a path to /proc/PID/maps
 func FindLibc(path string) (*VMRange, error) {
+	// XXX: Keep scanning (within some max retries times) until libc is found
+	time.Sleep(500 * time.Microsecond)
+
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open %s: %w", path, err)

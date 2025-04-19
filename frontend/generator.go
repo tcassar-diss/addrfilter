@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/tcassar-diss/addrfilter/bpf"
 	"github.com/tcassar-diss/addrfilter/bpf/wlgen"
 )
 
@@ -34,14 +33,7 @@ func RunGenerator(cfg *GeneratorCfg) error {
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 
-	// use this process's libc address range (spawned process will have the same
-	// range so may as well set up before the process starts)
-	libcRange, err := FindLibc(fmt.Sprintf("/proc/%d/maps", os.Getpid()))
-	if err != nil {
-		return fmt.Errorf("failed to get libc range for current process: %w", err)
-	}
-
-	g, err := wlgen.NewWLGenerator(logger, bpf.NewLibcRange(libcRange.Start, libcRange.End))
+	g, err := wlgen.NewWLGenerator(logger)
 	if err != nil {
 		return fmt.Errorf("failed to initialise generator: %w", err)
 	}
@@ -49,15 +41,22 @@ func RunGenerator(cfg *GeneratorCfg) error {
 	errChan := make(chan error, 1)
 	defer close(errChan)
 
-	go func() {
-		errChan <- g.Start(ctx)
-	}()
-
 	// XXX: do this with two forks so we can place the PPID in the follow map
 	// before child is spawned
 	if err = cmd.Start(); err != nil {
 		return fmt.Errorf("failed to launch %s%s: %v", cfg.CmdCfg.ExecPath, fmt.Sprintf(" %s", cfg.CmdCfg.ExecArgs), err)
 	}
+
+	libcRange, err := FindLibc(fmt.Sprintf("/proc/%d/maps", cmd.Process.Pid))
+	if err != nil {
+		return fmt.Errorf("failed to get libc range for current process: %w", err)
+	}
+
+	g.SetLibc(libcRange.Start, libcRange.End)
+
+	go func() {
+		errChan <- g.Start(ctx)
+	}()
 
 	if err = g.MonitorPID(int32(cmd.Process.Pid)); err != nil {
 		return fmt.Errorf("failed to protect executable: %v", err)

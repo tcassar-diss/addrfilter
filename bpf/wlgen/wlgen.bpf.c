@@ -1,5 +1,7 @@
 //go:build exclude
 
+#define DEBUG
+
 #include "../tracing_common.bpf.c"
 #include "../tracing_common.h"
 #include <bpf/bpf_helpers.h>
@@ -46,7 +48,7 @@ int wlgen(struct bpf_raw_tracepoint_args *ctx) {
 
   struct memory_filename mem_filename = {};
   if (assign_filename(task, rp, &mem_filename) != 0) {
-    char fmt[] = "failed to find syscall site";
+    char fmt[] = "assign filename to syscall site";
     bpf_trace_printk(fmt, sizeof(fmt));
 
     return -1;

@@ -1,10 +1,10 @@
 //go:build exclude
 
+/* #define DEBUG */
+/* #define PROFILE */
+
 #include "../tracing_common.h"
 #include "../tracing_common.bpf.c"
-
-/* #define PROFILE */
-/* #define DEBUG */
 
 struct vm_range *unused_vm_range __attribute__((unused));
 enum stat_type *unused_stat_type __attribute__((unused));
@@ -91,7 +91,6 @@ int addrfilter(struct bpf_raw_tracepoint_args *ctx) {
     return 1;
   }
 #endif
-
   RECORD_TIMESTAMP(start)
 
   record_stat(TP_ENTERED);

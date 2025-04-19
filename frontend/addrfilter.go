@@ -71,14 +71,21 @@ func RunAddrfilter(cfg *AddrfilterCfg) error {
 	errChan := make(chan error, 1)
 	defer close(errChan)
 
-	go func() {
-		errChan <- filter.Start(ctx)
-	}()
-
 	// TODO: fork twice so we can generate with ASLR off
 	if err = cmd.Start(); err != nil {
 		log.Fatalf("failed to launch %s%s: %v", cfg.CmdCfg.ExecPath, fmt.Sprintf(" %s", cfg.CmdCfg.ExecArgs), err)
 	}
+
+	libcRange, err := FindLibc(fmt.Sprintf("/proc/%d/maps", cmd.Process.Pid))
+	if err != nil {
+		return fmt.Errorf("failed to get libc range for current process: %w", err)
+	}
+
+	filter.SetLibc(libcRange.Start, libcRange.End)
+
+	go func() {
+		errChan <- filter.Start(ctx)
+	}()
 
 	if err = filter.ProtectPID(int32(cmd.Process.Pid)); err != nil {
 		log.Fatalf("failed to protect executable: %v", err)
@@ -150,12 +157,11 @@ func configureCommand(ctx context.Context, cfg *CmdCfg) *exec.Cmd {
 func initFilter(logger *zap.SugaredLogger, cfg *AddrfilterCfg) (*filter.Filter, func() error, error) {
 	// use this process's libc address range (spawned process will have the same
 	// range so may as well set up before the process starts)
-	libcRange, err := FindLibc(fmt.Sprintf("/proc/%d/maps", os.Getpid()))
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get libc range for current process: %w", err)
-	}
 
-	var parsedWLs *Whitelist
+	var (
+		parsedWLs *Whitelist
+		err       error
+	)
 
 	if cfg.Options.SysoWhitelist {
 		parsedWLs, err = ParseSysoWhitelists(cfg.WhitelistPath)
@@ -187,7 +193,7 @@ func initFilter(logger *zap.SugaredLogger, cfg *AddrfilterCfg) (*filter.Filter, 
 		ProfWriter: profileDest,
 	}
 
-	filter, err := filter.NewFilter(logger, bpf.NewLibcRange(libcRange.Start, libcRange.End), whitelists, fCfg)
+	filter, err := filter.NewFilter(logger, whitelists, fCfg)
 	if err != nil {
 		return nil, closeFn, fmt.Errorf("failed to create a new Filter: %w", err)
 	}

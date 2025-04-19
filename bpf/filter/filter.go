@@ -34,7 +34,7 @@ type FilterCfg struct {
 // Then, to filter a program, use Filter.ProtectPID().
 type Filter struct {
 	logger     *zap.SugaredLogger
-	libcRange  addrfilterVmRange
+	libcRange  *addrfilterVmRange
 	whitelists []*bpf.Whitelist
 	cfg        *FilterCfg
 	profiler   *Profiler
@@ -53,16 +53,11 @@ func DefaultFilterCfg() *FilterCfg {
 // NewFilter initialises a new filter.
 func NewFilter(
 	logger *zap.SugaredLogger,
-	libcRange *bpf.LibcRange,
 	whitelists []*bpf.Whitelist,
 	cfg *FilterCfg,
 ) (*Filter, error) {
 	f := &Filter{
-		logger: logger,
-		libcRange: addrfilterVmRange{
-			Start: libcRange.Start,
-			End:   libcRange.End,
-		},
+		logger:     logger,
 		whitelists: whitelists,
 		cfg:        cfg,
 		objects:    &addrfilterObjects{},
@@ -79,6 +74,10 @@ func NewFilter(
 // *activating* the filtering. After calling start, register PIDs you want to
 // protect with Filter.ProtectPID(). Start is blocking!
 func (f *Filter) Start(ctx context.Context) error {
+	if err := f.regLibc(); err != nil {
+		return fmt.Errorf("failed to register libc: %w", err)
+	}
+
 	tp, err := link.AttachRawTracepoint(link.RawTracepointOptions{
 		Name:    "sys_enter",
 		Program: f.objects.Addrfilter,
@@ -118,6 +117,13 @@ func (f *Filter) ProtectPID(pid int32) error {
 	}
 
 	return nil
+}
+
+func (f *Filter) SetLibc(start uint64, end uint64) {
+	f.libcRange = &addrfilterVmRange{
+		Start: start,
+		End:   end,
+	}
 }
 
 // ReadStatsMap will report Stats of execution.
@@ -260,10 +266,6 @@ func (f *Filter) init() error {
 		return fmt.Errorf("failed to register config with kernel: %w", err)
 	}
 
-	if err := f.regLibc(); err != nil {
-		return fmt.Errorf("failed to register libc address: %w", err)
-	}
-
 	if err := f.regWhitelists(); err != nil {
 		return fmt.Errorf("failed to register whitelists: %w", err)
 	}
@@ -361,11 +363,15 @@ func (f *Filter) registerWhitelist(whitelist *bpf.Whitelist) error {
 }
 
 func (f *Filter) regLibc() error {
+	if f.libcRange == nil {
+		return fmt.Errorf("%w: libcRange is nil", ErrCfgInvalid)
+	}
+
 	start := f.libcRange.Start
 	end := f.libcRange.End
 
 	if end <= start {
-		return fmt.Errorf("%w: end cannot be less than start", bpf.ErrBadLibcRange)
+		return fmt.Errorf("%w: end (%x) cannot be less than start (%x)", bpf.ErrBadLibcRange, end, start)
 	}
 
 	f.logger.Infow("updating libc address space",
@@ -376,9 +382,8 @@ func (f *Filter) regLibc() error {
 	if err := f.objects.LibcRangeMap.Put(
 		int32(zero),
 		addrfilterVmRange{
-			Start:    start,
-			End:      end,
-			Filename: [256]int8{},
+			Start: start,
+			End:   end,
 		},
 	); err != nil {
 		return fmt.Errorf("failed to insert vmrange for pid: %w", err)
