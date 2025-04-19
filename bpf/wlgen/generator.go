@@ -119,6 +119,10 @@ func (g *WLGenerator) regLibc() error {
 		return fmt.Errorf("%w: libc range not initialised", bpf.ErrBadLibcRange)
 	}
 
+	if g.libcRange.Start == 0 {
+		g.logger.Warn("start address is 0!")
+	}
+
 	start := g.libcRange.Start
 	end := g.libcRange.End
 
@@ -135,10 +139,13 @@ func (g *WLGenerator) regLibc() error {
 
 	if err := g.objects.LibcRangeMap.Put(
 		int32(zero),
-		wlgenVmRange{
-			Start:    0,
-			End:      0x7ffff7fff000,
-			Filename: [256]int8{},
+		// &wlgenVmRange{
+		// 	Start: 0x7ffff7000000,
+		// 	End:   0x7ffff7205000,
+		// },
+		&wlgenVmRange{
+			Start: start,
+			End:   end,
 		},
 	); err != nil {
 		return fmt.Errorf("failed to insert vmrange for pid: %w", err)

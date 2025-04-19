@@ -367,6 +367,10 @@ func (f *Filter) regLibc() error {
 		return fmt.Errorf("%w: libcRange is nil", ErrCfgInvalid)
 	}
 
+	if f.libcRange.Start == 0 {
+		f.logger.Warn("start address is 0!")
+	}
+
 	start := f.libcRange.Start
 	end := f.libcRange.End
 
@@ -381,7 +385,11 @@ func (f *Filter) regLibc() error {
 
 	if err := f.objects.LibcRangeMap.Put(
 		int32(zero),
-		addrfilterVmRange{
+		// &addrfilterVmRange{
+		// 	Start: 0x7ffff7000000,
+		// 	End:   0x7ffff7205000,
+		// },
+		&addrfilterVmRange{
 			Start: start,
 			End:   end,
 		},

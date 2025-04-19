@@ -71,7 +71,6 @@ func RunAddrfilter(cfg *AddrfilterCfg) error {
 	errChan := make(chan error, 1)
 	defer close(errChan)
 
-	// TODO: fork twice so we can generate with ASLR off
 	if err = cmd.Start(); err != nil {
 		log.Fatalf("failed to launch %s%s: %v", cfg.CmdCfg.ExecPath, fmt.Sprintf(" %s", cfg.CmdCfg.ExecArgs), err)
 	}

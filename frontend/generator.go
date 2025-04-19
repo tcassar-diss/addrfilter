@@ -41,8 +41,6 @@ func RunGenerator(cfg *GeneratorCfg) error {
 	errChan := make(chan error, 1)
 	defer close(errChan)
 
-	// XXX: do this with two forks so we can place the PPID in the follow map
-	// before child is spawned
 	if err = cmd.Start(); err != nil {
 		return fmt.Errorf("failed to launch %s%s: %v", cfg.CmdCfg.ExecPath, fmt.Sprintf(" %s", cfg.CmdCfg.ExecArgs), err)
 	}

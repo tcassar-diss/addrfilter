@@ -66,12 +66,17 @@ static inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx,
     return -1;
   }
 
+  char fmt[] = "libc range: 0x%lx, 0x%lx";
+  bpf_trace_printk(fmt, sizeof(fmt), libc_range->start, libc_range->end);
+
   struct stack_trace_t *r =
       (struct stack_trace_t *)bpf_map_lookup_elem(&stack_dbg_map, &zero);
   if (!r) {
     record_stat(STK_DBG_EMPTY);
     return -1;
   }
+
+  r->callsite = 0;
 
   int stack_size = bpf_get_stack(
       ctx, r->stacktrace, MAX_STACK_DEPTH * sizeof(u64), BPF_F_USER_STACK);
@@ -99,11 +104,12 @@ static inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx,
 
   if (r->callsite == 0) {
     record_stat(CALLSITE_LIBC);
+    return -1;
   }
 
 #ifdef DEBUG
-  static const char fmt2[] = "syscall site found @ 0x%lx";
-  bpf_trace_printk(fmt2, sizeof(fmt2), r->callsite);
+  static const char fmt2[] = "syscall site found @ 0x%llx after %d frames";
+  bpf_trace_printk(fmt2, sizeof(fmt2), r->callsite, r->frames_walked);
 #endif
 
   *rp = r->callsite;
@@ -153,8 +159,8 @@ static inline int assign_filename(struct task_struct *task, u64 rp,
       bpf_trace_printk(fmt, sizeof(fmt));
     }
 
-    static const char fmt[] = "failed to map %d to a range in memory map: are "
-                              "libc ranges (0x%xl - 0x%xl) correct? error -2";
+    static const char fmt[] = "failed to map 0x%llx to a range in memory map: are "
+                              "libc ranges (0x%llx - 0x%llx) correct? error -2";
     bpf_trace_printk(fmt, sizeof(fmt), rp);
   }
   if (res != 0) {
@@ -162,10 +168,10 @@ static inline int assign_filename(struct task_struct *task, u64 rp,
     return -1;
   }
 
-#ifdef DEBUG
-  static const char fmt[] = "assigned %d to %s";
+/* #ifdef DEBUG */
+  static const char fmt[] = "assigned 0x%lx to %s";
   bpf_trace_printk(fmt, sizeof(fmt), rp, mem_filename->d_iname);
-#endif /* DEBUG */
+// #endif /* DEBUG */ 
 
   if (strcmp(mem_filename->d_iname, "") == 0) {
     record_stat(NO_VMA_BACKING_FILE);

@@ -1,6 +1,7 @@
 //go:build exclude
 
-#define DEBUG
+/* #define DEBUG */
+/* #define PROFILE */
 
 #include "../tracing_common.bpf.c"
 #include "../tracing_common.h"
@@ -83,14 +84,6 @@ int wlgen(struct bpf_raw_tracepoint_args *ctx) {
     bpf_trace_printk(fmt, sizeof(fmt), syscall_nr, err);
 
     return -1;
-  }
-
-  if (bpf_map_update_elem(&path_whitelist_map, &mem_filename.d_iname, whitelist,
-                          0) != 0) {
-    char fmt[] = "failed to add whitelist for .so %s";
-    bpf_trace_printk(fmt, sizeof(fmt), &mem_filename.d_iname);
-
-    return 1;
   }
 
   return 0;
