@@ -5,6 +5,7 @@ go 1.23.2
 require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/cilium/ebpf v0.17.1
+	github.com/seccomp/libseccomp-golang v0.10.0
 	github.com/stretchr/testify v1.9.0
 	github.com/urfave/cli/v2 v2.27.6
 	go.uber.org/zap v1.27.0

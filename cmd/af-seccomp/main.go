@@ -96,7 +96,7 @@ func buildFilter(whitelistPath string) (*libseccomp.ScmpFilter, error) {
 	}
 
 	for _, nr := range whitelist {
-		if err := filter.AddRule(libseccomp.ScmpSyscall(nr), libseccomp.ActTrace); err != nil {
+		if err := filter.AddRule(libseccomp.ScmpSyscall(nr), libseccomp.ActAllow); err != nil {
 			return nil, fmt.Errorf("failed to add %d to whitelist: %w", nr, err)
 		}
 	}
