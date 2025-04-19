@@ -44,9 +44,9 @@ func parseArgs(args []string) (*afArgs, error) {
 }
 
 func parseWhitelist(whitelistPath string) ([]int, error) {
-	soWhitelists, err := frontend.ParseSysoWhitelists(whitelistPath)
+	soWhitelists, err := frontend.ParseTOMLWhitelists(whitelistPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse syso whitelist: %w", err)
+		return nil, fmt.Errorf("failed to parse TOML whitelist: %w", err)
 	}
 
 	scWhitelist := make(map[int]struct{})
@@ -67,7 +67,9 @@ func parseWhitelist(whitelistPath string) ([]int, error) {
 }
 
 func initFilter() (*libseccomp.ScmpFilter, error) {
-	filter, err := libseccomp.NewFilter(libseccomp.ActKillProcess)
+	// Cope with imperfect whitelist during benchmarks by setting default
+	// action to warn
+	filter, err := libseccomp.NewFilter(libseccomp.ActLog)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create a new seccomp filter: %w", err)
 	}
