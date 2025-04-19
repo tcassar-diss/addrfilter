@@ -1,6 +1,10 @@
-all: gen-wlgen gen-filter main.go
-	go generate ./bpf/filter
-	go build -o bin/addrfilter .
+all: addrfilter build-af-seccomp 
+
+addrfilter: gen-filter gen-wlgen
+	go build -o bin/ ./cmd/addrfilter
+
+build-%:
+	go build -o bin/ ./cmd/$*
 
 gen-%:
 	go generate ./bpf/$*

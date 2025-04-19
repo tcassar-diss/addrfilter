@@ -16,7 +16,9 @@ log "Installing to $INSTALL_PATH..."
 sudo install -m 755 "$BUILD_PATH" "$INSTALL_PATH"
 
 log "Installing with go install"
+cd ./cmd/addrfilter/
 go install
+cd -
 
 log "Build + install complete. Test with:"
 echo "  sudo $BINARY_NAME --help ..."
