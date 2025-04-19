@@ -66,8 +66,10 @@ static inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx,
     return -1;
   }
 
+  #ifdef DEBUG
   char fmt[] = "libc range: 0x%lx, 0x%lx";
   bpf_trace_printk(fmt, sizeof(fmt), libc_range->start, libc_range->end);
+  #endif
 
   struct stack_trace_t *r =
       (struct stack_trace_t *)bpf_map_lookup_elem(&stack_dbg_map, &zero);
@@ -168,10 +170,10 @@ static inline int assign_filename(struct task_struct *task, u64 rp,
     return -1;
   }
 
-/* #ifdef DEBUG */
+#ifdef DEBUG
   static const char fmt[] = "assigned 0x%lx to %s";
   bpf_trace_printk(fmt, sizeof(fmt), rp, mem_filename->d_iname);
-// #endif /* DEBUG */ 
+ #endif /* DEBUG */ 
 
   if (strcmp(mem_filename->d_iname, "") == 0) {
     record_stat(NO_VMA_BACKING_FILE);

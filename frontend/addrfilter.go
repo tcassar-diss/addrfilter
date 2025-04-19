@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	IsolatedUID = 1000
+	IsolatedUID = 1002
 	IsolatedGID = 1000
 )
 
@@ -144,6 +144,8 @@ func configureCommand(ctx context.Context, cfg *CmdCfg) *exec.Cmd {
 	if !cfg.SpawnRoot {
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Credential: &syscall.Credential{
+				// TODO: make this the (non-root) calling UID to let absolute
+				// paths work
 				Uid: IsolatedUID,
 				Gid: IsolatedGID,
 			},
