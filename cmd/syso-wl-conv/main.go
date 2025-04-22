@@ -50,6 +50,7 @@ func main() {
 
 	f, err := os.Create(args.tomlWlPath)
 	NoErr(err, nil)
+ defer f.Close()
 
 	err = frontend.MarshalTOMLWhitelists(f, whitelist)
 	NoErr(err, nil)
