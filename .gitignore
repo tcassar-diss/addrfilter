@@ -5,8 +5,13 @@ bin
 mins
 **/venv
 **/.ipynb_checkpoints
-examples/
 out/
+examples/*.*
 benchmarks/
 *.toml 
 *.rdb
+*.csv
+*.so
+linked
+*.s
+addrspace
