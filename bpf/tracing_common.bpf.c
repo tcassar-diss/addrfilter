@@ -35,9 +35,9 @@ static inline int warn_pid(pid_t pid) {
 static inline bool check_whitelist_field(struct syscall_whitelist *entry,
                                          u64 field_index) {
   if (field_index / 8 >= WHITELIST_LEN) {
-    return false;  // Out of bounds, return false instead of error code
+    return false; // Out of bounds, return false instead of error code
   }
-  return (entry->bitmap[field_index / 8] & (1 << (field_index % 8))) != 0;
+  return (entry->bit_array[field_index / 8] & (1 << (field_index % 8))) != 0;
 }
 
 static inline int strcmp(const char *cs, const char *ct) {
@@ -66,10 +66,10 @@ static inline int find_syscall_site(struct bpf_raw_tracepoint_args *ctx,
     return -1;
   }
 
-  #ifdef DEBUG
+#ifdef DEBUG
   char fmt[] = "libc range: 0x%lx, 0x%lx";
   bpf_trace_printk(fmt, sizeof(fmt), libc_range->start, libc_range->end);
-  #endif
+#endif
 
   struct stack_trace_t *r =
       (struct stack_trace_t *)bpf_map_lookup_elem(&stack_dbg_map, &zero);
@@ -161,8 +161,9 @@ static inline int assign_filename(struct task_struct *task, u64 rp,
       bpf_trace_printk(fmt, sizeof(fmt));
     }
 
-    static const char fmt[] = "failed to map 0x%llx to a range in memory map: are "
-                              "libc ranges (0x%llx - 0x%llx) correct? error -2";
+    static const char fmt[] =
+        "failed to map 0x%llx to a range in memory map: are "
+        "libc ranges (0x%llx - 0x%llx) correct? error -2";
     bpf_trace_printk(fmt, sizeof(fmt), rp);
   }
   if (res != 0) {
@@ -173,7 +174,7 @@ static inline int assign_filename(struct task_struct *task, u64 rp,
 #ifdef DEBUG
   static const char fmt[] = "assigned 0x%lx to %s";
   bpf_trace_printk(fmt, sizeof(fmt), rp, mem_filename->d_iname);
- #endif /* DEBUG */ 
+#endif /* DEBUG */
 
   if (strcmp(mem_filename->d_iname, "") == 0) {
     record_stat(NO_VMA_BACKING_FILE);

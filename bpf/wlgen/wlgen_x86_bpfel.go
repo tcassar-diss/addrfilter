@@ -12,7 +12,7 @@ import (
 	"github.com/cilium/ebpf"
 )
 
-type wlgenSyscallWhitelist struct{ Bitmap [58]uint8 }
+type wlgenSyscallWhitelist struct{ BitArray [58]uint8 }
 
 type wlgenVmRange struct {
 	Start    uint64

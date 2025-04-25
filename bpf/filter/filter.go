@@ -345,7 +345,7 @@ func (f *Filter) registerWhitelist(whitelist *bpf.Whitelist) error {
 
 	err = f.objects.PathWhitelistMap.Lookup(&name, &w)
 	if err != nil {
-		if w.Bitmap != [58]uint8{} {
+		if w.BitArray != [58]uint8{} {
 			return fmt.Errorf("%w: non-zerod bitmap already exists", bpf.ErrWhitelistAlreadyExists)
 		}
 	}

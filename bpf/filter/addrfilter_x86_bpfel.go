@@ -73,7 +73,7 @@ const (
 	addrfilterStatTypeSTAT_END                 addrfilterStatType = 22
 )
 
-type addrfilterSyscallWhitelist struct{ Bitmap [58]uint8 }
+type addrfilterSyscallWhitelist struct{ BitArray [58]uint8 }
 
 type addrfilterVmRange struct {
 	Start    uint64

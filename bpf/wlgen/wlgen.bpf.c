@@ -15,7 +15,7 @@ static inline int set_whitelist_field(struct syscall_whitelist *entry,
   if (field_index / 8 >= WHITELIST_LEN) {
     return -1; // Out of bounds
   }
-  entry->bitmap[field_index / 8] |= (1 << (field_index % 8));
+  entry->bit_array[field_index / 8] |= (1 << (field_index % 8));
   return 0;
 }
 
@@ -40,6 +40,11 @@ int wlgen(struct bpf_raw_tracepoint_args *ctx) {
   if (!apply_filter(task, pid)) {
     return 0;
   }
+
+#ifdef DEBUG
+  char fmt_syscallnr[] = "processing syscall number %d";
+  bpf_trace_printk(fmt_syscallnr, sizeof(fmt_syscallnr), syscall_nr);
+#endif
 
   if (find_syscall_site(ctx, &rp, pid) != 0) {
     char fmt[] = "failed to find syscall site";

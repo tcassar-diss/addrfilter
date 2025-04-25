@@ -157,7 +157,7 @@ func (g *WLGenerator) regLibc() error {
 func (g *WLGenerator) bitmapToUints(bitmap wlgenSyscallWhitelist) []uint {
 	var results []uint
 
-	for byteIndex, byteVal := range bitmap.Bitmap {
+	for byteIndex, byteVal := range bitmap.BitArray {
 		for bitIndex := range 8 {
 			if byteVal&(1<<bitIndex) != 0 {
 				syscallNum := uint(byteIndex*8 + bitIndex)

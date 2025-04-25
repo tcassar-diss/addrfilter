@@ -192,7 +192,7 @@ struct {
 
 /* syscall_whitelist is a bitmap where 1 <=> syscall _allowed_ */
 struct syscall_whitelist {
-  uint8_t bitmap[WHITELIST_LEN];
+  uint8_t bit_array[WHITELIST_LEN];
 };
 
 /* check_whitelist_field returns the 1 iff a syscall is allowed */

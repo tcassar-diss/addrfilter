@@ -27,7 +27,6 @@ static inline int filter(pid_t pid) {
       return 0;
     };
 
-
     return -1;
   }
 
