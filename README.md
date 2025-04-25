@@ -1,6 +1,6 @@
 # Fine-Grained System Call Filtering in Linux
 
-## `seccomp` and it's issues
+## `seccomp` and its issues
 
 - System call (syscall) filters are used to secure applications from RCEs,
   supply chain attacks, and for sandboxing.
