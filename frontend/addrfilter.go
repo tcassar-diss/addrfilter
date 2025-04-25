@@ -75,7 +75,13 @@ func RunAddrfilter(cfg *AddrfilterCfg) error {
 		log.Fatalf("failed to launch %s%s: %v", cfg.CmdCfg.ExecPath, fmt.Sprintf(" %s", cfg.CmdCfg.ExecArgs), err)
 	}
 
-	libcRange, err := FindLibc(fmt.Sprintf("/proc/%d/maps", cmd.Process.Pid))
+	var l *zap.SugaredLogger
+
+	if cfg.Options.Verbose {
+		l = logger
+	}
+
+	libcRange, err := FindLibc(fmt.Sprintf("/proc/%d/maps", cmd.Process.Pid), l)
 	if err != nil {
 		return fmt.Errorf("failed to get libc range for current process: %w", err)
 	}
@@ -156,9 +162,6 @@ func configureCommand(ctx context.Context, cfg *CmdCfg) *exec.Cmd {
 }
 
 func initFilter(logger *zap.SugaredLogger, cfg *AddrfilterCfg) (*filter.Filter, func() error, error) {
-	// use this process's libc address range (spawned process will have the same
-	// range so may as well set up before the process starts)
-
 	var (
 		parsedWLs *Whitelist
 		err       error

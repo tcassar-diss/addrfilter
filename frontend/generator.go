@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/tcassar-diss/addrfilter/bpf/wlgen"
+	"go.uber.org/zap"
 )
 
 type GeneratorCfg struct {
@@ -45,7 +46,13 @@ func RunGenerator(cfg *GeneratorCfg) error {
 		return fmt.Errorf("failed to launch %s%s: %v", cfg.CmdCfg.ExecPath, fmt.Sprintf(" %s", cfg.CmdCfg.ExecArgs), err)
 	}
 
-	libcRange, err := FindLibc(fmt.Sprintf("/proc/%d/maps", cmd.Process.Pid))
+	var l *zap.SugaredLogger
+
+	if cfg.Options.Verbose {
+		l = logger
+	}
+
+	libcRange, err := FindLibc(fmt.Sprintf("/proc/%d/maps", cmd.Process.Pid), l)
 	if err != nil {
 		return fmt.Errorf("failed to get libc range for current process: %w", err)
 	}

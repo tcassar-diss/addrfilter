@@ -17,7 +17,7 @@ func main() {
 
 	pid := int(pid64)
 
-	addr, err := frontend.FindLibc(fmt.Sprintf("/proc/%d/maps", pid))
+	addr, err := frontend.FindLibc(fmt.Sprintf("/proc/%d/maps", pid), nil)
 	if err != nil {
 		log.Fatalf("failed to find libc: %v", err)
 	}

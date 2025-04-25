@@ -43,7 +43,7 @@ func TestFindLibc(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.filepath, func(t *testing.T) {
-			gotVMRange, gotErr := FindLibc(c.filepath)
+			gotVMRange, gotErr := FindLibc(c.filepath, nil)
 
 			require.Equal(t, c.vmRange, gotVMRange)
 			if c.err != nil {
