@@ -12,11 +12,23 @@ INSTALL_PATH="/usr/local/bin/$BINARY_NAME"
 log "Building $BINARY_NAME..."
 make -j
 
-log "Installing to $INSTALL_PATH..."
+log "Installing $BINARY_NAME to $INSTALL_PATH..."
+sudo install -m 755 "$BUILD_PATH" "$INSTALL_PATH"
+
+BINARY_NAME="afgen"
+BUILD_PATH="./bin/$BINARY_NAME"
+INSTALL_PATH="/usr/local/bin/$BINARY_NAME"
+
+log "Installing $BINARY_NAME to $INSTALL_PATH..."
 sudo install -m 755 "$BUILD_PATH" "$INSTALL_PATH"
 
 log "Installing with go install"
 cd ./cmd/addrfilter/
+go install
+cd -
+
+log "Installing with go install"
+cd ./cmd/afgen/
 go install
 cd -
 

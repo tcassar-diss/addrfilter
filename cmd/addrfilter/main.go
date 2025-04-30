@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"path"
-	"path/filepath"
 
 	"github.com/tcassar-diss/addrfilter/bpf/filter"
 	"github.com/tcassar-diss/addrfilter/frontend"
@@ -17,12 +16,6 @@ func main() {
 	aCfg := &frontend.AddrfilterCfg{
 		CmdCfg:  &frontend.CmdCfg{},
 		Options: &frontend.GlobalFlags{},
-	}
-
-	gCfg := &frontend.GeneratorCfg{
-		WhitelistPath: "",
-		Options:       &frontend.GlobalFlags{},
-		CmdCfg:        &frontend.CmdCfg{},
 	}
 
 	var (
@@ -117,52 +110,6 @@ func main() {
 		},
 	}
 
-	app.Commands = []*cli.Command{
-		{
-			Name:  "generate",
-			Usage: "generates whitelists for addrfilter via dynamic analysis",
-			Action: func(cCtx *cli.Context) error {
-				if nArgs := cCtx.Args().Len(); nArgs < 1 {
-					_ = cli.ShowAppHelp(cCtx)
-
-					return cli.Exit(
-						fmt.Sprintf("\nERROR: Too few arguments! Expected >1, got %d", nArgs),
-						1,
-					)
-				}
-
-				gCfg.CmdCfg.ExecPath = cCtx.Args().Get(0)
-				gCfg.CmdCfg.ExecArgs = cCtx.Args().Slice()[1:]
-
-				execName := filepath.Base(gCfg.CmdCfg.ExecPath)
-
-				wd, err := os.Getwd()
-				if err != nil {
-					return fmt.Errorf("failed to getwd: %w", err)
-				}
-
-				gCfg.WhitelistPath = path.Join(wd, fmt.Sprintf("%s-whitelist.toml", execName))
-
-				if aCfg.Options.Verbose {
-					bts, err := json.Marshal(gCfg)
-					if err != nil {
-						panic(err)
-					}
-
-					fmt.Println(string(bts))
-				}
-
-				if err := frontend.RunGenerator(gCfg); err != nil {
-					return cli.Exit(
-						fmt.Sprintf("addrfilter encounted an error while generating a whitelist it couldn't recover from: %v", err),
-						2,
-					)
-				}
-
-				return nil
-			},
-		},
-	}
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}

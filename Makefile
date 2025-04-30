@@ -1,4 +1,4 @@
-all: addrfilter build-af-seccomp build-syso-wl-conv
+all: addrfilter build-afgen build-af-seccomp build-syso-wl-conv
 
 addrfilter: gen-filter gen-wlgen
 	go build -o bin/ ./cmd/addrfilter
