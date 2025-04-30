@@ -46,17 +46,17 @@ static inline int filter(pid_t pid) {
 }
 
 #ifdef PROFILE
-#define CALL_PROF_SUBMIT(p)                                                    \
-  if (prof) {                                                                  \
-    bpf_ringbuf_submit(p, 0);                                                  \
+#define CALL_PROF_SUBMIT(p)                                                   \
+  if (prof) {                                                                 \
+    bpf_ringbuf_submit(p, 0);                                                 \
   }
-#define RECORD_TIMESTAMP(sec)                                                  \
-  if (prof) {                                                                  \
-    prof->sec = bpf_ktime_get_ns();                                            \
+#define RECORD_TIMESTAMP(sec)                                                 \
+  if (prof) {                                                                 \
+    prof->sec = bpf_ktime_get_ns();                                           \
   }
-#define CALL_PROF_DISCARD(p)                                                   \
-  if (prof) {                                                                  \
-    bpf_ringbuf_discard(p, BPF_RB_NO_WAKEUP);                                  \
+#define CALL_PROF_DISCARD(p)                                                  \
+  if (prof) {                                                                 \
+    bpf_ringbuf_discard(p, BPF_RB_NO_WAKEUP);                                 \
   }
 #else
 #define CALL_PROF_SUBMIT(p)
