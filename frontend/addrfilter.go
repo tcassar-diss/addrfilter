@@ -20,7 +20,7 @@ import (
 
 const (
 	IsolatedUID = 1002
-	IsolatedGID = 1000
+	IsolatedGID = 1002
 )
 
 type CmdCfg struct {
