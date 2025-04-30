@@ -33,4 +33,4 @@ $(TARGET): $(OBJS) $(LIBS)
 	        $(LDFLAGS)
 
 clean:
-	rm -f $(OBJS) $(TARGET) $(LIBS)
+	rm -f $(OBJS) $(TARGET) $(LIBS) *.toml

@@ -4,7 +4,7 @@
 
 
 pid_t internal() {
-    return getpid() + 12;
+    return getpid();
 }
 
 pid_t wrap_getpid() {
